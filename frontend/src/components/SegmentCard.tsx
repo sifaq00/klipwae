@@ -1,6 +1,5 @@
 import { useState } from "react";
 import type { Segment } from "../types";
-import { markSegment } from "../lib/api";
 
 interface Props {
   seg: Segment;
@@ -99,7 +98,7 @@ export function SegmentCard({ seg, index, onPlay, onReject, onToggle, onToast }:
 
         <div className="flex items-center gap-1.5 pt-0.5">
           <button
-            onClick={() => markSegment(seg.id, "reviewed").then(() => onToggle("reviewed"))}
+            onClick={() => onToggle("reviewed")}
             className={`flex-1 rounded-lg border px-2 py-1.5 text-[11px] font-semibold transition-all active:scale-[0.97] ${
               seg.reviewed
                 ? "border-emerald-500/50 bg-emerald-500/15 text-emerald-300"
@@ -109,7 +108,7 @@ export function SegmentCard({ seg, index, onPlay, onReject, onToggle, onToast }:
             {seg.reviewed ? "✓ Reviewed" : "Review"}
           </button>
           <button
-            onClick={() => markSegment(seg.id, "posted").then(() => onToggle("posted"))}
+            onClick={() => onToggle("posted")}
             className={`flex-1 rounded-lg border px-2 py-1.5 text-[11px] font-semibold transition-all active:scale-[0.97] ${
               seg.posted
                 ? "border-gold/60 bg-gold/15 text-gold"

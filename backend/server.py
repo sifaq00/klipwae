@@ -54,12 +54,17 @@ def _setup() -> Settings:
     )
 
     root = logging.getLogger()
-    root.addHandler(file_handler)
+    # _setup dipanggil per request (create_job/retry) — jangan nambah handler
+    # baru tiap kali, nanti baris log ke-duplikat & handler bocor.
+    if not any(isinstance(h, logging.handlers.RotatingFileHandler) for h in root.handlers):
+        root.addHandler(file_handler)
     if config.log_level:
         root.setLevel(config.log_level.upper())
     return config
 
 JOB_RUNNERS: dict[str, "JobRunner"] = {}
+_REBURN: dict[str, threading.Thread] = {}
+_REBURN_STATUS: dict[str, str] = {}
 
 JOB_LOG_DIR = Path(__file__).parent / "data" / "job_logs"
 
@@ -112,15 +117,18 @@ class JobRunner:
 
         db = JobDB()
         try:
+            runtime.set_job(self.job_id)
             db.create_job(self.job_id, self.url)
             with contextlib.redirect_stdout(_LogStream(self._log)):
                 run_pipeline(self.job_id, db, config, log_func=self._log)
         finally:
             db.close()
+            runtime.clear_job(self.job_id)
             runtime.unregister(self.thread.ident)
             # Runner selesai (done/failed/killed) — pop dari registry biar tidak
             # menumpuk: log job tetap kebaca via file (stream_log fallback disk).
-            JOB_RUNNERS.pop(self.job_id, None)
+            if JOB_RUNNERS.get(self.job_id) is self:
+                JOB_RUNNERS.pop(self.job_id, None)
         self._done.set()
         self._log_event.set()
 
@@ -136,11 +144,15 @@ class JobRunner:
             pass
 
     def kill(self):
-        # Hanya stop thread job INI + subprocess-nya — jangan sentuh job lain
-        # yang berjalan bareng (runtime state per thread).
-        if self.thread is not None:
-            runtime.kill(self.thread.ident)
-        self._job_status("killed")
+        # Stop thread job INI + terminate semua subprocess-nya (termasuk
+        # ffmpeg worker) — job lain yang berjalan bareng tidak tersentuh.
+        if self.thread is not None and self.thread.ident:
+            runtime.kill_job(self.job_id, self.thread.ident)
+        # Jangan timpa status FINAL (done/failed) yang sudah ditulis pipeline —
+        # kill setelah selesai = no-op status (window: pipeline belum set _done
+        # tapi sudah nulis status final; kecil & percaya pada final).
+        if not self._done.is_set():
+            self._job_status("killed")
         self._done.set()
 
     def _job_status(self, status: str):
@@ -284,7 +296,22 @@ async def delete_job(job_id: str):
     runner = JOB_RUNNERS.get(job_id)
     if runner and runner.is_alive:
         runner.kill()
-        JOB_RUNNERS.pop(job_id, None)
+        try:
+            # Jangan langsung hapus file: thread yang masih jalan bisa nulis
+            # ulang file yang baru dihapus (zombie). Tunggu thread berhenti.
+            runner.thread.join(10)
+        except Exception:
+            pass
+
+    # Reburn masih jalan untuk job ini? terminate + tunggu berhenti dulu
+    reburn = _REBURN.get(job_id)
+    if reburn and reburn.is_alive:
+        runtime.kill_job(job_id, reburn.ident)
+        try:
+            reburn.join(10)
+        except Exception:
+            pass
+    _REBURN.pop(job_id, None)
 
     db = JobDB()
     try:
@@ -351,12 +378,13 @@ async def retry_job(job_id: str):
 
 
 @app.get("/api/jobs/{job_id}/log")
-async def stream_log(job_id: str):
+async def stream_log(job_id: str, since: int = 0):
     runner = JOB_RUNNERS.get(job_id)
     if not runner:
         # Job lama / server restart: baca log persisten dari disk
         log_path = _job_log_path(job_id)
         lines = log_path.read_text(encoding="utf-8").splitlines() if log_path.exists() else []
+        lines = lines[since:]
 
         async def replay():
             for line in lines:
@@ -367,7 +395,7 @@ async def stream_log(job_id: str):
         return EventSourceResponse(replay())
 
     async def event_generator():
-        idx = 0
+        idx = since
         while True:
             logs = runner.recent_logs(idx)
             for line in logs:
@@ -449,9 +477,18 @@ async def reject_segment(segment_id: int):
     """Buang klip: hapus row segmen + semua file terkait (raw, reframed, final, .ass)."""
     db = JobDB()
     try:
-        row = db.delete_segment(segment_id)
-        if not row:
+        # Cek aktivitas DULU — kalau job masih proses, jangan hapus apa pun
+        found = db.conn.execute(
+            "SELECT job_id FROM segments WHERE id=?", (segment_id,)
+        ).fetchone()
+        if not found:
             raise HTTPException(404, "Segment not found")
+        jid = found["job_id"]
+        runner = JOB_RUNNERS.get(jid)
+        reburn = _REBURN.get(jid)
+        if (runner and runner.is_alive) or (reburn and reburn.is_alive):
+            raise HTTPException(409, "Job masih memproses — tunggu selesai dulu")
+        row = db.delete_segment(segment_id)
     finally:
         db.close()
     removed = []
@@ -632,8 +669,11 @@ async def get_caption_style():
 
 @app.put("/api/caption-style")
 async def put_caption_style(body: dict):
-    from utils.caption_style import save_global
-    return save_global(body)
+    from utils.caption_style import save_global, validate
+    clean = validate(body)
+    if clean is None:
+        raise HTTPException(422, "Nilai gaya subtitle tidak valid")
+    return save_global(clean)
 
 
 @app.get("/api/jobs/{job_id}/caption-style")
@@ -649,12 +689,16 @@ async def get_job_caption_style(job_id: str):
 @app.put("/api/jobs/{job_id}/caption-style")
 async def put_job_caption_style(job_id: str, body: dict):
     import json as _json
+    from utils.caption_style import validate
+    clean = validate(body)
+    if clean is None:
+        raise HTTPException(422, "Nilai gaya subtitle tidak valid")
     db = JobDB()
     try:
         row = db.conn.execute("SELECT id FROM jobs WHERE id=?", (job_id,)).fetchone()
         if not row:
             raise HTTPException(404, "Job not found")
-        db.set_job_style(job_id, _json.dumps(body, ensure_ascii=False))
+        db.set_job_style(job_id, _json.dumps(clean, ensure_ascii=False))
     finally:
         db.close()
     return {"status": "saved"}
@@ -662,13 +706,14 @@ async def put_job_caption_style(job_id: str, body: dict):
 
 @app.post("/api/jobs/{job_id}/reburn-captions")
 async def reburn_captions(job_id: str):
-    """Regenerate subtitle dengan style terbaru + burn ulang semua klip final.
-    Jalan sinkron — 10 klip ≈ 2-3 menit."""
+    """Regenerate subtitle dengan style terbaru + burn ulang semua klip final."""
     import json as _json
+
+    if job_id in _REBURN and _REBURN[job_id].is_alive:
+        raise HTTPException(409, "Reburn sudah berjalan untuk episode ini")
 
     def _do():
         from config import Settings
-        from db.jobs import JobDB as _JobDB
         from stages.caption import CaptionStage
         # Hapus final + thumbnail dulu supaya stage benar-benar re-burn dan
         # thumbnail di-generate ulang dengan gaya baru (bukan yang basi).
@@ -680,14 +725,41 @@ async def reburn_captions(job_id: str):
                 p.unlink()
             except OSError:
                 pass
-        db = _JobDB()
+        db = JobDB()
         try:
             return CaptionStage().run(job_id, db, Settings())
         finally:
             db.close()
 
-    result = await asyncio.to_thread(_do)
-    return {"status": "done", "metadata": result.metadata}
+    def _wrapped():
+        runtime.set_job(job_id)  # ffmpeg worker ter-ikat ke job → ikut ke-kill
+        try:
+            jdb = JobDB()
+            try:
+                from utils.caption_style import style_for_job
+                enabled = style_for_job(jdb.get_job_style(job_id)).get("enabled", True)
+            finally:
+                jdb.close()
+            if not enabled:
+                _REBURN_STATUS[job_id] = "skipped"
+                return
+            _REBURN_STATUS[job_id] = "done"
+            _do()
+        finally:
+            runtime.clear_job(job_id)
+            # JANGAN pop di sini: delete_job butuh ref thread utk join/kill
+            # selama masih hidup. Entry mati di-replace saat reburn berikutnya.
+
+    _REBURN[job_id] = threading.Thread(target=_wrapped, daemon=True)
+    _REBURN_STATUS[job_id] = "running"
+    _REBURN[job_id].start()
+
+    while True:
+        t = _REBURN.get(job_id)
+        if not t or not t.is_alive():
+            break
+        await asyncio.sleep(0.5)
+    return {"status": _REBURN_STATUS.get(job_id, "done")}
 
 
 if __name__ == "__main__":

@@ -209,6 +209,78 @@ def test_analyze_chunk_retries_3x_then_raises(monkeypatch):
             f"Expected 3 attempts, got {client.models.generate_content.call_count}"
 
 
+def test_generate_captions_batch_split_and_partial_failure(monkeypatch):
+    """Caption dipecah per 8 segmen: 10 segmen = 2 call. Batch 2 gagal →
+    caption batch 1 tetap ada (bukan semua kosong)."""
+    import json as _json
+    from types import SimpleNamespace
+
+    import tenacity.nap as nap
+    from stages.analyze import Segment, generate_captions
+
+    monkeypatch.setattr(nap, "sleep", lambda s: None)
+
+    segs = [
+        Segment(start=f"00:0{i}:00", end=f"00:0{i}:30",
+                product_mentioned=f"Produk{i}", topic="skincare",
+                confidence=0.8, reason="r")
+        for i in range(10)
+    ]
+
+    # batch 1 = 8 segmen (selalu gagal → 3x retry → skip), batch 2 = 2 segmen
+    # (sukses). Bukti: idx GLOBAL tetap benar + batch lain tidak ikut hilang.
+    def flaky(model, contents, config):
+        payload = _json.loads(contents)
+        if len(payload) > 5:
+            raise RuntimeError("gemini down")
+        return SimpleNamespace(parsed=SimpleNamespace(
+            captions=[SimpleNamespace(idx=p["idx"], caption=f"cap{p['idx']}")
+                      for p in payload]))
+
+    client2 = SimpleNamespace()
+    client2.models = SimpleNamespace(generate_content=flaky)
+    caps = generate_captions(client2, "sys", segs, "model")
+    # Hanya batch 2 (idx global 8,9) yang selamat; caption ber-INDEX LOCAL
+    # batch-nya (model menjawab per posisi batch), mapping global di kunci.
+    assert sorted(caps) == [8, 9], f"got {sorted(caps)}"
+    assert caps[8] == "cap0" and caps[9] == "cap1", "kunci global harus konsisten"
+
+
+def test_generate_captions_batch_2_failure_keeps_batch_1(monkeypatch):
+    import json as _json
+    from types import SimpleNamespace
+
+    import tenacity.nap as nap
+    from stages.analyze import Segment, generate_captions
+
+    monkeypatch.setattr(nap, "sleep", lambda s: None)
+
+    segs = [
+        Segment(start=f"00:0{i}:00", end=f"00:0{i}:30",
+                product_mentioned=f"P{i}", topic="s",
+                confidence=0.8, reason="r")
+        for i in range(10)
+    ]
+
+    def always_fail(model, contents, config):
+        raise RuntimeError("down")
+
+    client = SimpleNamespace(models=SimpleNamespace(generate_content=always_fail))
+    caps = generate_captions(client, "sys", segs, "model")
+    # Semua batch gagal (3x retry) → kosong, bukan raise
+    assert caps == {}
+
+
+def test_fallback_caption():
+    from stages.analyze import Segment, fallback_caption
+    seg = Segment(start="00:01:00", end="00:02:00", product_mentioned="Vaseline",
+                  topic="body care routine", confidence=0.8, reason="r")
+    assert fallback_caption(seg) == "Vaseline — body care routine"
+    empty = Segment(start="00:01:00", end="00:02:00", product_mentioned="",
+                    topic="", confidence=0.8, reason="r")
+    assert fallback_caption(empty) == "Klip produk"
+
+
 def test_analyze_stage_chunk_failure_does_not_fail_job(tmp_path):
     """Exception chunk individual tidak boleh menggagalkan job — stage tetap DONE
     dengan 0 segmen, file output tetap ditulis (kosong)."""

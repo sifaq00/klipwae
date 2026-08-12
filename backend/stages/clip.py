@@ -168,6 +168,14 @@ class ClipStage(Stage):
                 clip_idx = i * 100 + k
                 clip_path = self._clip_path(job_id, clip_idx, seg)
                 if clip_path.exists():
+                    # File sudah dibuat attempt sebelumnya (atau row DB lewat
+                    # karena analyze re-run) — repair: upsert, kalau tidak
+                    # is_complete false selamanya + segmen hilang dari UI.
+                    db.upsert_clip_segment(
+                        job_id, clip_idx,
+                        sec_to_hms(s), sec_to_hms(e), seg,
+                        str(clip_path),
+                    )
                     clips_created += 1
                     done_chunks += 1
                     continue

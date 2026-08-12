@@ -1,6 +1,6 @@
-﻿"""Render 9:16 dengan kamera halus mengikuti pembicara aktif (YOLO boxes).
+"""Render 9:16 dengan kamera halus mengikuti pembicara aktif (YOLO boxes).
 
-Loop frame per frame di Python â†’ crop mengikuti box target (EMA smoothing) â†’
+Loop frame per frame di Python → crop mengikuti box target (EMA smoothing) →
 pipe ke ffmpeg NVENC. Audio di-mux dari source. Gaya Opus Clip: pan halus
 + zoom dalam saat bicara.
 """
@@ -36,7 +36,7 @@ def render_tracked(
     zoom_idle: float = 1.05,
     zoom_ease: float = 0.06,
 ):
-    # zone_names: side string â†’ zona int (dari assign_zones median)
+    # zone_names: side string → zona int (dari assign_zones median)
     zone_names = {0: "left", 1: "right"}
     has_path = bool(camera_path)
 
@@ -50,7 +50,7 @@ def render_tracked(
         ["ffmpeg", "-y", "-f", "rawvideo", "-pix_fmt", "bgr24",
          "-s", f"{target_w}x{target_h}", "-r", str(fps),
          "-i", "-",
-         # Bug ffmpeg 8.1.1: NVENC + rawvideo bgr24 â†’ pix_fmt gbrp (plane
+         # Bug ffmpeg 8.1.1: NVENC + rawvideo bgr24 ? pix_fmt gbrp (plane
          # GBR ke-swap) yang bikin Chrome render hijau. Paksa yuv420p +
          # tag smpte170m (BT.601) biar player decode benar.
          "-vf", "format=yuv420p",
@@ -59,6 +59,8 @@ def render_tracked(
          str(output_path)],
         stdin=subprocess.PIPE, stderr=subprocess.DEVNULL,
     )
+    import runtime
+    runtime.set_proc(proc)
 
     cx, cy = w / 2, h / 2
     t_cx, t_cy = w / 2, h / 2   # target halus (EMA kedua)
@@ -73,8 +75,12 @@ def render_tracked(
         ret, frame = cap.read()
         if not ret:
             break
+        if runtime.stop_requested():
+            # killed saat render: abort tanpa menulis output setengah jadi
+            proc.terminate()
+            break
         t = idx / fps
-        # progres render per ~10% â€” bar tetap gerak selama ffmpeg pipe
+        # progres render per ~10% — bar tetap gerak selama ffmpeg pipe
         if total_frames and idx % max(1, total_frames // 10) == 0:
             print(f"    reframe render {clip_no} {idx / total_frames * 100:.0f}%")
         seg = None
@@ -102,7 +108,7 @@ def render_tracked(
                 # EMA kedua: target box sendiri dihaluskan dulu (buang jitter deteksi)
                 t_cx += (bx - t_cx) * target_alpha
                 t_cy += (by - t_cy) * target_alpha
-                # deadband: target geser dikit â†’ kamera DIAM (kill micro-jitter)
+                # deadband: target geser dikit → kamera DIAM (kill micro-jitter)
                 dx = t_cx - cx
                 dy = t_cy - cy
                 if abs(dx) > db_x:
@@ -114,7 +120,7 @@ def render_tracked(
                 target_zoom = max(zoom_min, min(zoom_max, (h * zoom_fit) / box_h))
                 hold_left = hold_frames
             else:
-                # Track hilang sesaat â†’ TAHAN posisi (jangan drift langsung)
+                # Track hilang sesaat → TAHAN posisi (jangan drift langsung)
                 if hold_left > 0:
                     hold_left -= 1
                 else:
@@ -146,7 +152,9 @@ def render_tracked(
     proc.stdin.close()
     proc.wait()
     cap.release()
+    runtime.clear_proc(proc)
     if proc.returncode != 0:
+        # Abort karena kill juga sampai sini � jangan buat fallback/render lanjut
         return False
 
     # Mux audio dari source

@@ -4,7 +4,24 @@ from functools import lru_cache
 
 
 def run_ffmpeg(args: list[str], timeout: int = 300, cwd: str | None = None) -> subprocess.CompletedProcess:
-    return subprocess.run(["ffmpeg", "-y"] + args, capture_output=True, text=True, timeout=timeout, cwd=cwd)
+    """Jalankan ffmpeg + daftarkan ke runtime biar bisa di-terminate saat kill.
+
+    (sebelumnya subprocess.run — kill job tidak menyentuh ffmpeg: clip/caption/
+    burn tetap jalan sampai selesai walau job sudah "killed".)"""
+    import runtime
+
+    proc = subprocess.Popen(["ffmpeg", "-y"] + args, stdout=subprocess.DEVNULL,
+                            stderr=subprocess.PIPE, cwd=cwd)
+    runtime.set_proc(proc)
+    try:
+        _, err = proc.communicate(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        _, err = proc.communicate()
+        raise RuntimeError(f"ffmpeg timeout ({timeout}s)") from None
+    finally:
+        runtime.clear_proc(proc)
+    return subprocess.CompletedProcess(args, proc.returncode, stdout=b"", stderr=err)
 
 
 @lru_cache(maxsize=1)

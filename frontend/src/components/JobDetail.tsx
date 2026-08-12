@@ -62,9 +62,11 @@ export function JobDetail({ job, onBack, onRefresh, onRejected, onDelete, videoR
     let es: EventSource | null = null;
     let closed = false;
     let retry: number | null = null;
+    let since = 0; // cursor baris; reconnect lanjut dari sini (tidak duplikat)
 
     const connect = () => {
       es = streamLog(job.id, (line) => {
+        since += 1;
         setLogs((p) => [...p, line]);
         const p = parseProgress(line);
         if (p) setProgress(p);
@@ -72,7 +74,7 @@ export function JobDetail({ job, onBack, onRefresh, onRejected, onDelete, videoR
         closed = true;
         getSegments(job.id).then(setSegments).catch(() => {});
         onRefresh();
-      });
+      }, since);
       es.onerror = () => {
         es?.close();
         es = null;

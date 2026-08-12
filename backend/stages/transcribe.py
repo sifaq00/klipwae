@@ -55,11 +55,20 @@ class TranscribeStage(Stage):
             runtime.set_proc(proc)
             try:
                 proc.wait(timeout=600)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait()
+                audio_path.unlink(missing_ok=True)
+                return StageResult(status=StageStatus.FAILED, error="audio extract timeout")
             finally:
-                runtime.set_proc(None)
+                runtime.clear_proc(proc)
             if runtime.stop_requested():
+                # Buang .wav parsial — kalau dibiarkan, retry pakai audio
+                # terpotong dan transcript jadi pincang diam-diam.
+                audio_path.unlink(missing_ok=True)
                 return StageResult(status=StageStatus.FAILED, error="Killed")
             if proc.returncode != 0:
+                audio_path.unlink(missing_ok=True)
                 return StageResult(status=StageStatus.FAILED, error="ffmpeg audio extract failed")
 
         segments = run_whisper(

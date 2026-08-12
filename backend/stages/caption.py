@@ -249,6 +249,10 @@ class CaptionStage(Stage):
     def run(self, job_id: str, db, config):
         if db is None:
             return StageResult(status=StageStatus.DONE, metadata={"clips_captioned": 0})
+        from utils.caption_style import style_for_job
+        if not style_for_job(db.get_job_style(job_id)).get("enabled", True):
+            print(f"    caption SKIPPED (subtitle nonaktif)")
+            return StageResult(status=StageStatus.DONE, metadata={"clips_captioned": 0, "skipped": True})
         rows = db.get_job_segments(job_id)
         rows = [r for r in rows if r.get("clip_path")]
         if not rows:
@@ -282,7 +286,7 @@ class CaptionStage(Stage):
             source = reframed if reframed.exists() else clip
             final_path = final_dir / source.name.replace("_reframed", "")
             if final_path.exists():
-                return 1, None
+                return 1, row["id"], str(final_path), None
             try:
                 # Ambil kata yang overlap dengan segmen ini (pakai buffer clip)
                 seg_start = hms_to_sec(row["start_time"]) - CLIP_BUFFER_SEC
@@ -322,19 +326,19 @@ class CaptionStage(Stage):
                 if result.returncode != 0:
                     raise RuntimeError(f"ffmpeg burn-in failed: {result.stderr[-500:]}")
 
-                db.update_segment_by_id(row["id"], caption_path=str(final_path))
                 _make_thumb(final_path)
-                return 1, None
+                return 1, row["id"], str(final_path), None
             except Exception as e:
                 logger.warning("caption_skip", clip=clip.name, error=str(e))
-                return 0, {"clip": clip.name, "error": str(e)}
+                return 0, row["id"], None, {"clip": clip.name, "error": str(e)}
 
         # Burn paralel â€” re-encode 1080x1920 itu CPU-bound, 3 worker berasa
         # 2-3x lebih cepat daripada serial (re-burn 10 klip: ~10mnt â†’ ~4mnt).
         workers = max(1, min(3, (os.cpu_count() or 2) // 2))
         with ThreadPoolExecutor(max_workers=workers) as pool:
-            for ok, err in pool.map(_burn, rows):
-                if ok:
+            for ok, seg_id, caption_path, err in pool.map(_burn, rows):
+                if ok and caption_path:
+                    db.update_segment_by_id(seg_id, caption_path=caption_path)
                     clips_captioned += 1
                 elif err:
                     with errors_lock:

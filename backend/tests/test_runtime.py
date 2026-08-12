@@ -71,24 +71,34 @@ def test_kill_all_stops_every_job():
 
 
 def test_proc_is_per_thread():
-    """set_proc di thread A tidak terlihat dari thread B."""
+    """set_proc terkait JOB (contextvar), bukan thread — worker ThreadPool
+    yang di-submit dari thread job ikut ter-ikat ke job yang sama."""
     class FakeProc:
-        pass
+        def __init__(self):
+            self.calls = []
+
+        def poll(self):
+            return None
+
+        def terminate(self):
+            self.calls.append("terminate")
 
     runtime.reset()
-    seen = []
-    runtime.set_proc(FakeProc())
+    runtime.set_job("jobA")
+    pa, pb = FakeProc(), FakeProc()
+    runtime.set_proc(pa)
+    runtime.set_proc(pb)
+    assert runtime._by_job.get("jobA") == [pa, pb]
 
-    def job_b():
-        runtime.reset()
-        seen.append(runtime.get_proc())
-        runtime.unregister(threading.get_ident())
+    # kill_job("jobA") terminate proc-nya; job lain bersih
+    runtime.kill_job("jobA", threading.get_ident())
+    assert pa.calls == ["terminate"] and pb.calls == ["terminate"]
+    assert runtime._by_job["jobA"] == [pa, pb]  # list belum di-clear, proc sudah mati
 
-    t = threading.Thread(target=job_b)
-    t.start()
-    t.join(3)
-    assert seen == [None], f"Proc thread lain harus None, got {seen}"
-    assert runtime.get_proc() is not None, "Proc thread A harus tetap ada"
+    runtime.clear_proc(pa)
+    runtime.clear_proc(pb)
+    assert runtime._by_job["jobA"] == []
+    runtime.clear_job("jobA")
     runtime.unregister(threading.get_ident())
 
 

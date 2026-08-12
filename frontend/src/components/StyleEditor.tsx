@@ -3,6 +3,7 @@ import type { CaptionStyle } from "../types";
 import { getStylePreview, listFonts } from "../lib/api";
 
 const DEFAULTS: CaptionStyle = {
+  enabled: true,
   font: "Segoe UI",
   size: 96,
   bold: true,
@@ -114,6 +115,36 @@ export function StyleEditor({ value, onChange, compact, previewSide = "bottom" }
 
   const form = (
     <div className={`space-y-4 ${compact ? "text-xs" : ""}`}>
+      <button
+        type="button"
+        onClick={() => onChange({ ...value, enabled: !value.enabled })}
+        className={`flex w-full items-center justify-between rounded-xl border px-3 py-2.5 text-left transition-all ${
+          value.enabled
+            ? "border-emerald-400/40 bg-emerald-400/10"
+            : "border-edge bg-raise/60 opacity-80"
+        }`}
+      >
+        <div>
+          <p className="text-xs font-semibold text-slate-200">Aktifkan subtitle</p>
+          <p className="text-[10px] text-slate-500">
+            {value.enabled
+              ? "Subtitle karaoke di-burn ke klip final"
+              : "Stage subtitle di-skip — klip tetap jadi tanpa teks"}
+          </p>
+        </div>
+        <span
+          className={`relative h-5 w-9 shrink-0 rounded-full transition-colors ${
+            value.enabled ? "bg-emerald-400" : "bg-slate-700"
+          }`}
+        >
+          <span
+            className={`absolute top-0.5 h-4 w-4 rounded-full bg-white transition-all ${
+              value.enabled ? "left-[18px]" : "left-0.5"
+            }`}
+          />
+        </span>
+      </button>
+
       <div>
         <p className="mb-1.5 text-[11px] uppercase tracking-wider text-slate-500">Preset</p>
         <div className="flex flex-wrap gap-1.5">

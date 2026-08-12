@@ -57,7 +57,9 @@ def track_persons(video_path: Path, device: str = "cuda", clip_no: str = "",
         cache = _cache_path(video_path, step, imgsz)
         if use_cache and cache.exists():
             data = json.loads(cache.read_text(encoding="utf-8"))
-            if data.get("size") == video_path.stat().st_size and data.get("step") == step:
+            st = video_path.stat()
+            if (data.get("size") == st.st_size and data.get("mtime") == st.st_mtime
+                    and data.get("step") == step):
                 return data["frames"]
 
         model = get_tracker()
@@ -102,6 +104,7 @@ def track_persons(video_path: Path, device: str = "cuda", clip_no: str = "",
             CACHE_DIR.mkdir(parents=True, exist_ok=True)
             cache.write_text(json.dumps({
                 "size": video_path.stat().st_size,
+                "mtime": video_path.stat().st_mtime,
                 "step": step,
                 "imgsz": imgsz,
                 "frames": out,

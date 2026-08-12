@@ -59,7 +59,10 @@ class ReframeStage(Stage):
         errors = []
         layouts = set()
         total_clips = len(raw_clips)
+        import runtime
         for idx, clip in enumerate(raw_clips, 1):
+            if runtime.stop_requested():
+                break  # killed: jangan render klip tersisa
             print(f"    reframe {idx}/{total_clips}")
             reframed_path = clip.with_name(clip.stem + "_reframed.mp4")
             if reframed_path.exists():

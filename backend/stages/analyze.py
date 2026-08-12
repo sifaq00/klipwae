@@ -109,16 +109,12 @@ def analyze_chunk(client, system_prompt: str, chunk_text: str, model: str) -> tu
 
 
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=30))
-def generate_captions(client, system_prompt: str, segments: list[Segment], model: str) -> dict[int, str]:
-    """Generate caption TikTok per segmen — SATU call untuk semua segmen.
-
-    Exception di-propagate ke tenacity → retry 3x. Habis 3x raise ke caller
-    yang menangkapnya jadi {} — caption bukan artefak kritis, klip tetap jadi.
-    """
+def _caption_batch(client, system_prompt: str, batch: list[Segment], model: str) -> dict[int, str]:
+    """SATU call Gemini utk 1 batch segmen. Retry 3x via tenacity."""
     payload = [
         {"idx": i, "start": s.start, "end": s.end,
          "product": s.product_mentioned, "topic": s.topic}
-        for i, s in enumerate(segments)
+        for i, s in enumerate(batch)
     ]
     response = client.models.generate_content(
         model=model,
@@ -133,6 +129,34 @@ def generate_captions(client, system_prompt: str, segments: list[Segment], model
     if not response.parsed:
         return {}
     return {c.idx: c.caption for c in response.parsed.captions}
+
+
+# Max segmen per call Gemini — episode panjang bisa 15-30 segmen; batch
+# besar = kalau 1 call gagal, SEMUA caption hilang. Pecah → kegagalan
+# cuma ngebunuh 1 batch (retry 3x per batch tetap jalan).
+CAPTION_BATCH_SIZE = 8
+
+
+def generate_captions(client, system_prompt: str, segments: list[Segment], model: str) -> dict[int, str]:
+    """Generate caption TikTok per segmen, batch per 8. Kegagalan satu batch
+    tidak menghapus caption batch lain (yang berhasil tetap dipakai)."""
+    all_caps: dict[int, str] = {}
+    for start in range(0, len(segments), CAPTION_BATCH_SIZE):
+        batch = segments[start:start + CAPTION_BATCH_SIZE]
+        try:
+            batch_caps = _caption_batch(client, system_prompt, batch, model)
+            for local_idx, cap in batch_caps.items():
+                all_caps[start + local_idx] = cap
+        except Exception as e:
+            logger.warning("caption_batch_skipped", start=start, error=str(e))
+    return all_caps
+
+
+def fallback_caption(seg: Segment) -> str:
+    """Caption cadangan kalau Gemini gagal — datanya sudah ada, tinggal
+    dibungkus biar tetap bisa di-copy-paste ke TikTok."""
+    parts = [p for p in (seg.product_mentioned, seg.topic) if p]
+    return " — ".join(parts) if parts else "Klip produk"
 
 
 def overlap_ratio(a: Segment, b: Segment) -> float:
@@ -235,10 +259,13 @@ class AnalyzeStage(Stage):
 
         # Chunk independen satu sama lain → parallel call Gemini (3 worker).
         # Retry total per chunk tetap 3x (tenacity), hanya wall-clock yang turun.
+        import runtime
         from concurrent.futures import ThreadPoolExecutor, as_completed
         with ThreadPoolExecutor(max_workers=getattr(config, "analyze_parallel", 3)) as pool:
             futs = {pool.submit(_analyze_one, c): c for c in chunks}
             for i, fut in enumerate(as_completed(futs), 1):
+                if runtime.stop_requested():
+                    break  # killed: jangan menunggu chunk tersisa (hemat biaya API)
                 print(f"    analyze {i}/{total_chunks} chunks")
                 segments, usage = fut.result()
                 all_segments.extend(segments)
@@ -258,7 +285,7 @@ class AnalyzeStage(Stage):
                     logger.warning("caption_generation_skipped", error=str(e))
                     captions = {}
                 for i, seg in enumerate(final):
-                    seg.caption_text = captions.get(i)
+                    seg.caption_text = captions.get(i) or fallback_caption(seg)
 
         _write_segments_atomic(job_id, final)
         db.insert_segments(job_id, final)

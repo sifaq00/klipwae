@@ -84,7 +84,11 @@ class IngestStage(Stage):
                     print(line, end="")
                 proc.wait()
             finally:
-                runtime.set_proc(None)
+                runtime.clear_proc(proc)
+            if runtime.stop_requested():
+                # Killed: laporkan Killed, bukan "download failed" (status jadi
+                # "killed" di orchestrator, bukan "failed")
+                return StageResult(status=StageStatus.FAILED, error="Killed")
             if proc.returncode != 0:
                 return StageResult(status=StageStatus.FAILED, error="yt-dlp download failed")
 

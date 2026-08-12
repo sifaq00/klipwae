@@ -52,6 +52,7 @@ export interface Segment {
 }
 
 export interface CaptionStyle {
+  enabled: boolean;
   font: string;
   size: number;
   bold: boolean;

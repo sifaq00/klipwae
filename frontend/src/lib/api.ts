@@ -64,9 +64,10 @@ export async function deleteJob(id: string): Promise<void> {
 export function streamLog(
   id: string,
   onLog: (line: string) => void,
-  onDone: () => void
+  onDone: () => void,
+  since = 0
 ): EventSource {
-  const es = new EventSource(`${BASE}/jobs/${id}/log`);
+  const es = new EventSource(`${BASE}/jobs/${id}/log?since=${since}`);
   es.addEventListener("log", (e) => onLog(e.data));
   es.addEventListener("done", () => {
     es.close();

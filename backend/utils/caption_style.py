@@ -9,6 +9,7 @@ DATA_DIR = Path(__file__).parent.parent / "data"
 GLOBAL_STYLE_PATH = DATA_DIR / "caption_style.json"
 
 DEFAULT_STYLE: dict = {
+    "enabled": True,
     "font": "Segoe UI",
     "size": 96,
     "bold": True,
@@ -30,6 +31,45 @@ DEFAULT_STYLE: dict = {
 }
 
 KEYS = set(DEFAULT_STYLE.keys())
+
+# Tipe per key — dipakai validasi PUT supaya nilai rusak (size="abc")
+# tidak sampai ke ffmpeg/libass dan bikin preview/burn 500.
+INT_KEYS = {"size", "spacing", "line_spacing", "outline", "shadow", "margin_v"}
+BOOL_KEYS = {"enabled", "bold", "italic", "uppercase", "pop"}
+STR_KEYS = {
+    "font", "text_color", "highlight_color", "outline_color",
+    "shadow_color", "position", "border_style", "style",
+}
+
+
+def validate(style: dict) -> dict | None:
+    """Coerce & validasi nilai (body parsial dianggap full default).
+    Invalid → None; valid → style lengkap."""
+    clean = {k: style.get(k, DEFAULT_STYLE[k]) for k in KEYS}
+    for k, v in list(clean.items()):
+        if k not in KEYS:
+            continue
+        try:
+            if k in INT_KEYS:
+                clean[k] = int(v)
+            elif k in BOOL_KEYS:
+                clean[k] = bool(v) if isinstance(v, bool) else str(v).lower() == "true"
+        except (TypeError, ValueError):
+            return None
+    if clean.get("style") not in ("highlight", "bg", "classic", "pop"):
+        return None
+    if clean.get("position") not in ("bottom", "top"):
+        return None
+    if clean.get("border_style") not in ("outline", "box"):
+        return None
+    for k in STR_KEYS:
+        if k not in clean:
+            continue
+        v = str(clean[k])
+        if len(v) > 200:
+            return None
+        clean[k] = v
+    return clean
 
 
 def load_global() -> dict:

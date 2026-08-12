@@ -1,0 +1,20 @@
+# Python
+backend/.env
+backend/data/
+backend/models/
+backend/logs/
+backend/*.db
+__pycache__/
+*.pyc
+.venv/
+*.egg-info/
+*.tmp
+.pytest_cache/
+
+# Node
+frontend/node_modules/
+frontend/dist/
+frontend/tsconfig.tsbuildinfo
+
+# OS
+Thumbs.db

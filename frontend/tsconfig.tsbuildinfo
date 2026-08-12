@@ -1,1 +1,0 @@
-{"root":["./src/app.tsx","./src/main.tsx","./src/types.ts","./src/vite-env.d.ts","./src/components/dashboard.tsx","./src/components/jobdetail.tsx","./src/components/jobsview.tsx","./src/components/segmentcard.tsx","./src/components/styleeditor.tsx","./src/components/urlinput.tsx","./src/lib/api.ts","./src/lib/stages.ts"],"version":"5.9.3"}

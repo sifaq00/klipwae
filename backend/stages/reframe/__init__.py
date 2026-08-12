@@ -127,12 +127,6 @@ def _render_tracked(clip, camera_path, reframed_path, fps, clip_no: str = "", co
     try:
         from stages.reframe.tracker import assign_zones, track_persons
         from stages.reframe.render_tracked import render_tracked
-        boxes = track_persons(clip, clip_no=clip_no)
-        if not boxes:
-            return False
-        zone_map = assign_zones(boxes)
-        if not zone_map:
-            return False
         cfg = {}
         if config is not None:
             cfg = {
@@ -147,6 +141,17 @@ def _render_tracked(clip, camera_path, reframed_path, fps, clip_no: str = "", co
                 "zoom_idle": getattr(config, "reframe_zoom_idle", 1.05),
                 "zoom_ease": getattr(config, "reframe_zoom_ease", 0.06),
             }
+        boxes = track_persons(
+            clip, clip_no=clip_no,
+            step=getattr(config, "reframe_track_step", 3),
+            use_cache=getattr(config, "reframe_track_cache", True),
+            imgsz=getattr(config, "reframe_track_imgsz", 320),
+        )
+        if not boxes:
+            return False
+        zone_map = assign_zones(boxes)
+        if not zone_map:
+            return False
         return render_tracked(clip, camera_path, boxes, zone_map, fps, reframed_path,
                               clip_no=clip_no, **cfg)
     except Exception as e:

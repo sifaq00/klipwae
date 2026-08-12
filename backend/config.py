@@ -26,6 +26,9 @@ class Settings(BaseSettings):
     reframe_hold_sec: float = 0.5
     reframe_zoom_idle: float = 1.05
     reframe_zoom_ease: float = 0.06
+    reframe_track_step: int = 3
+    reframe_track_cache: bool = True
+    reframe_track_imgsz: int = 320
     log_level: str = "INFO"
     hf_token: str | None = None
 

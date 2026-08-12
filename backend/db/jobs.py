@@ -168,16 +168,6 @@ class JobDB:
         )
         self.conn.commit()
 
-    def update_segment(self, job_id: str, idx: int, **kwargs):
-        cols = ", ".join(f"{k}=?" for k in kwargs)
-        vals = list(kwargs.values())
-        vals.extend([job_id, idx])
-        self.conn.execute(
-            f"UPDATE segments SET {cols} WHERE id = (SELECT id FROM segments WHERE job_id=? ORDER BY id LIMIT 1 OFFSET ?)",
-            vals,
-        )
-        self.conn.commit()
-
     def record_metric(self, job_id: str, stage: str, cost_usd: float = 0.0, extra: dict = None):
         self.conn.execute(
             "INSERT INTO metrics (job_id, stage, cost_usd, extra_json) VALUES (?, ?, ?, ?)",

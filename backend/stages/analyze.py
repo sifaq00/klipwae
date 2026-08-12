@@ -84,62 +84,55 @@ def format_chunk_for_prompt(chunk: list[SimpleNamespace]) -> str:
 def analyze_chunk(client, system_prompt: str, chunk_text: str, model: str) -> tuple[list[Segment], dict]:
     """Call Gemini dengan response_schema Pydantic. Return (segments, usage).
 
-    Selalu return list (bisa kosong), tidak raise ke caller — kegagalan chunk
-    individual TIDAK BOLEH menggagalkan seluruh job (plan Section 11).
+    Exception di-propagate ke tenacity → retry 3x beneran jalan. Habis 3x,
+    raise ke caller (AnalyzeStage.run) yang memutuskan skip chunk, bukan
+    menggagalkan job (plan Section 11).
     """
-    try:
-        response = client.models.generate_content(
-            model=model,
-            contents=chunk_text,
-            config={
-                "system_instruction": system_prompt,
-                "response_mime_type": "application/json",
-                "response_schema": AnalysisResult,
-                "temperature": 0.1,
-            },
-        )
-        result: AnalysisResult = response.parsed
-        usage = {}
-        if hasattr(response, "usage_metadata") and response.usage_metadata:
-            usage = {
-                "input_tokens": response.usage_metadata.prompt_token_count,
-                "output_tokens": response.usage_metadata.candidates_token_count,
-            }
-        return result.segments, usage
-    except Exception as e:
-        logger.warning("analyze_chunk_skipped", error=str(e))
-        return [], {"input_tokens": 0, "output_tokens": 0}
+    response = client.models.generate_content(
+        model=model,
+        contents=chunk_text,
+        config={
+            "system_instruction": system_prompt,
+            "response_mime_type": "application/json",
+            "response_schema": AnalysisResult,
+            "temperature": 0.1,
+        },
+    )
+    result: AnalysisResult = response.parsed
+    usage = {}
+    if hasattr(response, "usage_metadata") and response.usage_metadata:
+        usage = {
+            "input_tokens": response.usage_metadata.prompt_token_count,
+            "output_tokens": response.usage_metadata.candidates_token_count,
+        }
+    return result.segments, usage
 
 
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=30))
 def generate_captions(client, system_prompt: str, segments: list[Segment], model: str) -> dict[int, str]:
     """Generate caption TikTok per segmen — SATU call untuk semua segmen.
 
-    Gagal → return {} (caption kosong), JANGAN menggagalkan job. Caption
-    bukan artefak kritis; klip tetap jadi.
+    Exception di-propagate ke tenacity → retry 3x. Habis 3x raise ke caller
+    yang menangkapnya jadi {} — caption bukan artefak kritis, klip tetap jadi.
     """
-    try:
-        payload = [
-            {"idx": i, "start": s.start, "end": s.end,
-             "product": s.product_mentioned, "topic": s.topic}
-            for i, s in enumerate(segments)
-        ]
-        response = client.models.generate_content(
-            model=model,
-            contents=json.dumps(payload, ensure_ascii=False),
-            config={
-                "system_instruction": system_prompt,
-                "response_mime_type": "application/json",
-                "response_schema": CaptionBatch,
-                "temperature": 0.7,
-            },
-        )
-        if not response.parsed:
-            return {}
-        return {c.idx: c.caption for c in response.parsed.captions}
-    except Exception as e:
-        logger.warning("caption_generation_skipped", error=str(e))
+    payload = [
+        {"idx": i, "start": s.start, "end": s.end,
+         "product": s.product_mentioned, "topic": s.topic}
+        for i, s in enumerate(segments)
+    ]
+    response = client.models.generate_content(
+        model=model,
+        contents=json.dumps(payload, ensure_ascii=False),
+        config={
+            "system_instruction": system_prompt,
+            "response_mime_type": "application/json",
+            "response_schema": CaptionBatch,
+            "temperature": 0.7,
+        },
+    )
+    if not response.parsed:
         return {}
+    return {c.idx: c.caption for c in response.parsed.captions}
 
 
 def overlap_ratio(a: Segment, b: Segment) -> float:
@@ -229,13 +222,28 @@ class AnalyzeStage(Stage):
         total_cost = 0.0
         chunks_processed = 0
         total_chunks = len(chunks)
-        for i, chunk in enumerate(chunks, 1):
-            print(f"    analyze {i}/{total_chunks} chunks")
+
+        def _analyze_one(chunk) -> tuple[list[Segment], dict]:
             chunk_text = format_chunk_for_prompt(chunk)
-            segments, usage = analyze_chunk(client, system_prompt, chunk_text, config.analyze_model)
-            all_segments.extend(segments)
-            total_cost += calc_cost(usage, config.analyze_model)
-            chunks_processed += 1
+            # analyze_chunk sudah retry 3x sendiri — exception di sini = beneran
+            # gagal; skip chunk, JANGAN gagalkan job (plan Section 11).
+            try:
+                return analyze_chunk(client, system_prompt, chunk_text, config.analyze_model)
+            except Exception as e:
+                logger.warning("analyze_chunk_skipped", error=str(e))
+                return [], {"input_tokens": 0, "output_tokens": 0}
+
+        # Chunk independen satu sama lain → parallel call Gemini (3 worker).
+        # Retry total per chunk tetap 3x (tenacity), hanya wall-clock yang turun.
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        with ThreadPoolExecutor(max_workers=getattr(config, "analyze_parallel", 3)) as pool:
+            futs = {pool.submit(_analyze_one, c): c for c in chunks}
+            for i, fut in enumerate(as_completed(futs), 1):
+                print(f"    analyze {i}/{total_chunks} chunks")
+                segments, usage = fut.result()
+                all_segments.extend(segments)
+                total_cost += calc_cost(usage, config.analyze_model)
+                chunks_processed += 1
 
         merged = merge_and_dedupe(all_segments)
         final = [s for s in merged if s.confidence >= config.confidence_threshold]
@@ -244,7 +252,11 @@ class AnalyzeStage(Stage):
             caption_prompt_path = Path("prompts/caption_generator.txt")
             if caption_prompt_path.exists():
                 caption_prompt = caption_prompt_path.read_text(encoding="utf-8")
-                captions = generate_captions(client, caption_prompt, final, config.analyze_model)
+                try:
+                    captions = generate_captions(client, caption_prompt, final, config.analyze_model)
+                except Exception as e:
+                    logger.warning("caption_generation_skipped", error=str(e))
+                    captions = {}
                 for i, seg in enumerate(final):
                     seg.caption_text = captions.get(i)
 

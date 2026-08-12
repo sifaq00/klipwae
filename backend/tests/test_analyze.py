@@ -121,6 +121,8 @@ def test_analyze_stage_with_mock(tmp_path: Path):
         )]
 
         from stages import analyze
+        orig_analyze_chunk = analyze.analyze_chunk
+        orig_generate_captions = analyze.generate_captions
         analyze.analyze_chunk = lambda client, sp, ct, model: (fake_segments, {"input_tokens": 100, "output_tokens": 50})
         analyze.generate_captions = lambda client, sp, segs, model: {0: "Hook! \n#skincare #fyp"}
 
@@ -167,6 +169,10 @@ def test_analyze_stage_with_mock(tmp_path: Path):
         db.close()
         print("OK test_analyze_stage_with_mock")
     finally:
+        # Restore mock — tanpa ini, lambda keleak ke test lain dan
+        # analyze_chunk/analyze.generate_captions tidak pernah raise.
+        analyze.analyze_chunk = orig_analyze_chunk
+        analyze.generate_captions = orig_generate_captions
         os.chdir(old_cwd)
 
 
@@ -180,3 +186,82 @@ if __name__ == "__main__":
     with tempfile.TemporaryDirectory() as tmp:
         test_analyze_stage_with_mock(Path(tmp))
     print("\nAll analyze tests passed.")
+
+
+def test_analyze_chunk_retries_3x_then_raises(monkeypatch):
+    """Bug: try/except di dalam analyze_chunk menelan exception → tenacity retry
+    tidak pernah jalan. Harus retry 3x lalu raise ke caller."""
+    from unittest.mock import MagicMock
+
+    import tenacity.nap as nap
+    from stages.analyze import analyze_chunk
+
+    monkeypatch.setattr(nap, "sleep", lambda s: None)  # percepat backoff
+    client = MagicMock()
+    client.models.generate_content.side_effect = RuntimeError("boom")
+
+    from tenacity import RetryError
+    try:
+        analyze_chunk(client, "sys", "text", "gemini-x")
+        assert False, "Harus raise setelah 3 attempt"
+    except RetryError:
+        assert client.models.generate_content.call_count == 3, \
+            f"Expected 3 attempts, got {client.models.generate_content.call_count}"
+
+
+def test_analyze_stage_chunk_failure_does_not_fail_job(tmp_path):
+    """Exception chunk individual tidak boleh menggagalkan job — stage tetap DONE
+    dengan 0 segmen, file output tetap ditulis (kosong)."""
+    import threading
+
+    import runtime
+    from stages import analyze
+
+    old_cwd = os.getcwd()
+    os.chdir(tmp_path)
+    try:
+        Path("data/transcripts").mkdir(parents=True)
+        Path("prompts").mkdir()
+        Path("prompts/product_detection.txt").write_text("test prompt", encoding="utf-8")
+        Path("prompts/caption_generator.txt").write_text("test caption prompt", encoding="utf-8")
+
+        transcript = [
+            {"text": "Aku pakai serum vitamin C tiap pagi", "start": 10.0, "end": 13.5, "words": []},
+            {"text": "Efeknya kulit lebih cerah", "start": 14.0, "end": 17.0, "words": []},
+        ]
+        Path("data/transcripts/job2.json").write_text(
+            json.dumps(transcript, ensure_ascii=False), encoding="utf-8"
+        )
+
+        import sqlite3
+        from db.jobs import init_db, JobDB
+        init_db()
+        db = JobDB()
+        db.create_job("job2", "https://youtube.com/watch?v=job2")
+
+        orig_analyze_chunk = analyze.analyze_chunk
+        analyze.analyze_chunk = lambda client, sp, ct, model: (_ for _ in ()).throw(RuntimeError("boom"))
+
+        from types import SimpleNamespace
+        config = SimpleNamespace(
+            google_api_key="fake",
+            analyze_model="gemini-2.5-flash",
+            chunk_duration_min=20,
+            chunk_overlap_min=2,
+            confidence_threshold=0.6,
+        )
+        runtime.reset()
+        try:
+            result = analyze.AnalyzeStage().run("job2", db, config)
+        finally:
+            analyze.analyze_chunk = orig_analyze_chunk
+            db.close()
+            runtime.unregister(threading.get_ident())
+
+        assert result.status.value == "done", f"status={result.status}"
+        assert result.metadata["segments_found"] == 0
+        out = Path("data/segments/job2.json")
+        assert out.exists(), "Output file tetap harus ditulis"
+        assert json.loads(out.read_text(encoding="utf-8")) == []
+    finally:
+        os.chdir(old_cwd)

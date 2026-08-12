@@ -98,7 +98,7 @@ export default function App() {
           </div>
           <div>
             <h1 className="font-display text-xl font-bold tracking-tight">
-              <span className="text-gradient">Auto-Clipper</span> <span className="text-slate-400">Studio</span>
+              <span className="text-gradient">Klipwae</span> <span className="text-slate-400">Studio</span>
             </h1>
             <p className="text-[11px] text-slate-500">Podcast → klip produk → siap keranjang kuning</p>
           </div>

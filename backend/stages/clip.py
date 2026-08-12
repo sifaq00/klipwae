@@ -149,6 +149,8 @@ class ClipStage(Stage):
         errors = []
         total_chunks = sum(len(split_segment_ranges(max(0.0, hms_to_sec(seg.start)), hms_to_sec(seg.end), words)) for seg in segments)
         done_chunks = 0
+        # Kumpulin dulu semua work item (flush chunk yang sudah ada)
+        work = []
         for i, seg in enumerate(segments):
             start_sec = max(0.0, hms_to_sec(seg.start))
             end_sec = hms_to_sec(seg.end)
@@ -169,11 +171,24 @@ class ClipStage(Stage):
                     clips_created += 1
                     done_chunks += 1
                     continue
+                first = k == 0
+                last = k == len(ranges) - 1
+                buf = CLIP_BUFFER_SEC if (first or last) else SPLIT_BUFFER_SEC
+                work.append((seg, clip_idx, s, e, clip_path, buf))
+
+        # ffmpeg per klip independen → jalan paralel (bukan guillotine 1-by-1)
+        def _do(item):
+            seg, clip_idx, s, e, clip_path, buf = item
+            self._clip_one(raw_video, s, e, clip_path, buf)
+            return seg, clip_idx, s, e, clip_path
+
+        import sqlite3
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        with ThreadPoolExecutor(max_workers=getattr(config, "clip_parallel", 3)) as pool:
+            futs = {pool.submit(_do, w): w for w in work}
+            for fut in as_completed(futs):
                 try:
-                    first = k == 0
-                    last = k == len(ranges) - 1
-                    buf = CLIP_BUFFER_SEC if (first or last) else SPLIT_BUFFER_SEC
-                    self._clip_one(raw_video, s, e, clip_path, buf)
+                    seg, clip_idx, s, e, clip_path = fut.result()
                     db.upsert_clip_segment(
                         job_id, clip_idx,
                         sec_to_hms(s), sec_to_hms(e), seg,
@@ -183,14 +198,13 @@ class ClipStage(Stage):
                     done_chunks += 1
                     print(f"    clip {done_chunks}/{total_chunks}")
                 except Exception as e:
-                    # Plan Section 11: timestamp invalid â†’ skip segmen (bukan gagalkan job).
+                    # Plan Section 11: timestamp invalid → skip segmen (bukan gagalkan job).
                     # TAPI error DB = bug sistemik, jangan ditelan: fail stage supaya
                     # retry benar-benar memperbaiki state (bukan artefak yatim).
-                    import sqlite3
                     if isinstance(e, sqlite3.Error):
                         raise
-                    logger.warning("clip_skip", seg=i, chunk=k, error=str(e))
-                    errors.append({"segment": i, "chunk": k, "error": str(e)})
+                    logger.warning("clip_skip", error=str(e))
+                    errors.append({"chunk": str(e)})
 
         # Buang row segmen induk yang sudah digantikan sub-klip / gagal di-clip
         if db is not None:

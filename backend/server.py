@@ -117,6 +117,10 @@ class JobRunner:
                 run_pipeline(self.job_id, db, config, log_func=self._log)
         finally:
             db.close()
+            runtime.unregister(self.thread.ident)
+            # Runner selesai (done/failed/killed) — pop dari registry biar tidak
+            # menumpuk: log job tetap kebaca via file (stream_log fallback disk).
+            JOB_RUNNERS.pop(self.job_id, None)
         self._done.set()
         self._log_event.set()
 
@@ -132,7 +136,10 @@ class JobRunner:
             pass
 
     def kill(self):
-        runtime.kill()
+        # Hanya stop thread job INI + subprocess-nya — jangan sentuh job lain
+        # yang berjalan bareng (runtime state per thread).
+        if self.thread is not None:
+            runtime.kill(self.thread.ident)
         self._job_status("killed")
         self._done.set()
 
@@ -297,6 +304,7 @@ async def delete_job(job_id: str):
         DATA_DIR / "segments" / f"{job_id}.*",
         DATA_DIR / "clips_raw" / f"{job_id}_*",
         DATA_DIR / "clips_final" / f"{job_id}_*",
+        DATA_DIR / "tracks" / f"{job_id}_*",
         JOB_LOG_DIR / f"{job_id}.log",
     ]
     for pattern in patterns:
@@ -464,8 +472,10 @@ def _segment_files(seg: dict) -> list[Path]:
         clip = _resolve_clip_path(clip_path)
         files.append(clip)
         files.append(clip.with_name(clip.stem + "_reframed.mp4"))
-        files.append(Path(__file__).parent / "data" / "clips_final" / clip.name)
+        final = Path(__file__).parent / "data" / "clips_final" / clip.name
+        files.append(final)
         files.append(Path(__file__).parent / "data" / "clips_final" / Path(clip.name).with_suffix(".ass"))
+        files.append(final.with_suffix(".jpg"))  # thumbnail dari _make_thumb — kalau tidak, yatim
     return files
 
 

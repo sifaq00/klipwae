@@ -47,16 +47,31 @@ class TranscribeStage(Stage):
 
         audio_path = Path(f"data/raw/{job_id}.wav")
         if not audio_path.exists():
-            subprocess.run([
+            proc = subprocess.Popen([
                 "ffmpeg", "-y", "-i", str(raw_path),
                 "-vn", "-acodec", "pcm_s16le", "-ar", "16000", "-ac", "1",
                 str(audio_path),
-            ], capture_output=True, check=True, timeout=600)
+            ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            runtime.set_proc(proc)
+            try:
+                proc.wait(timeout=600)
+            finally:
+                runtime.set_proc(None)
+            if runtime.stop_requested():
+                return StageResult(status=StageStatus.FAILED, error="Killed")
+            if proc.returncode != 0:
+                return StageResult(status=StageStatus.FAILED, error="ffmpeg audio extract failed")
 
         segments = run_whisper(
             audio_path, config.whisper_model, config.whisper_device,
             initial_prompt=getattr(config, "whisper_initial_prompt", ""),
         )
+
+        # Kill saat transcribe: JANGAN tulis file partial — kalau ditulis,
+        # is_complete (cek file ada) jadi True dan retry skip stage ini,
+        # lalu downstream pakai transcript terpotong (data loss diam-diam).
+        if runtime.stop_requested():
+            return StageResult(status=StageStatus.FAILED, error="Killed")
 
         out_dir = Path("data/transcripts")
         out_dir.mkdir(parents=True, exist_ok=True)

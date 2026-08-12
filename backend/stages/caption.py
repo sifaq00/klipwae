@@ -101,6 +101,9 @@ def generate_ass(words: list[dict], style: str = "highlight",
     ls = max(0, int(style_cfg.get("line_spacing", 0) or 0))
     fs_default = int(style_cfg.get("size", 96) or 96)
     line_sep = "\\N" if ls == 0 else f"\\N{{\\fs{ls}}} {{\\fs{fs_default}}}\\N"
+    # Wrap dinamis: batas char disesuaikan ukuran font biar baris tidak
+    # melebihi lebar 1080 (margin kiri/kanan 40px). 0.5 ≈ lebar char rata-rata.
+    wrap_max_chars = max(12, int(1000 / (fs_default * 0.5)))
 
     def _text(w: dict) -> str:
         t = w["text"]
@@ -135,7 +138,7 @@ def generate_ass(words: list[dict], style: str = "highlight",
         active_scale = "\\fscx112\\fscy112" if pop else ""
         for sent in sentences:
             texts = [_text(w) for w in sent]
-            wrapped = _wrap(texts)
+            wrapped = _wrap(texts, wrap_max_chars)
             for i, w in enumerate(sent):
                 line_start = w["start"]
                 if i + 1 < len(sent):
@@ -171,7 +174,7 @@ def generate_ass(words: list[dict], style: str = "highlight",
             end = sent[-1]["end"]
             # Sanitize per kata DULU â€” line_sep berisi tag \N/{\fs} yang
             # jangan ikut di-escape.
-            wrapped = _wrap([_sanitize_ass_text(_text(w)) for w in sent])
+            wrapped = _wrap([_sanitize_ass_text(_text(w)) for w in sent], wrap_max_chars)
             lines.append(
                 f"Dialogue: 0,{_sec_to_ass_time(start)},{_sec_to_ass_time(end)},"
                 f"Default,,0,0,0,,{line_sep.join(wrapped)}"

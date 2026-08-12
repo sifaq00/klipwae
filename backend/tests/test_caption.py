@@ -163,6 +163,24 @@ def test_caption_stage_no_clips(tmp_path: Path):
         os.chdir(old_cwd)
 
 
+def test_wrap_scales_with_font_size():
+    words = [{"text": f"kata{i}", "start": i * 0.3, "end": i * 0.3 + 0.25} for i in range(30)]
+    # size 96 → max_chars = 20; baris wrap tidak boleh melebihi 20 char
+    ass = generate_ass(words, style="static", style_cfg=_cfg(size=96))
+    for line in ass.splitlines():
+        if line.startswith("Dialogue:"):
+            text = line.split(",", 9)[-1]
+            for visual_line in text.split("\\N"):
+                assert len(visual_line.replace(" ", "")) <= 20, f"line too long: {visual_line}"
+    # size 60 → max_chars = 33
+    ass60 = generate_ass(words, style="static", style_cfg=_cfg(size=60))
+    for line in ass60.splitlines():
+        if line.startswith("Dialogue:"):
+            text = line.split(",", 9)[-1]
+            for visual_line in text.split("\\N"):
+                assert len(visual_line.replace(" ", "")) <= 33, f"line too long: {visual_line}"
+
+
 if __name__ == "__main__":
     test_sanitize_ass_text()
     test_sec_to_ass_time()

@@ -18,3 +18,6 @@ frontend/tsconfig.tsbuildinfo
 
 # OS
 Thumbs.db
+
+# Docs internal plan/spec (bukan untuk publik)
+docs/superpowers/

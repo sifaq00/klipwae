@@ -31,6 +31,7 @@ def load_segments(path: Path) -> list[SimpleNamespace]:
             product_mentioned=s.get("product_mentioned"),
             topic=s.get("topic"),
             confidence=s.get("confidence", 0.0),
+            caption_text=s.get("caption_text"),  # wajib: sub-klip di-DB tanpa ini = caption hilang
         )
         for s in data
     ]

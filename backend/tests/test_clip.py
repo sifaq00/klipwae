@@ -31,13 +31,15 @@ def test_load_segments_empty(tmp_path):
 
 def test_load_segments_valid(tmp_path):
     data = [{"start": "00:01:00", "end": "00:01:10", "product_mentioned": "serum",
-             "topic": "skincare", "confidence": 0.85}]
+             "topic": "skincare", "confidence": 0.85,
+             "caption_text": "Serum ini wajib coba! #skincare"}]
     f = tmp_path / "seg.json"
     f.write_text(json.dumps(data), encoding="utf-8")
     segs = load_segments(f)
     assert len(segs) == 1
     assert segs[0].product_mentioned == "serum"
     assert segs[0].confidence == 0.85
+    assert segs[0].caption_text == "Serum ini wajib coba! #skincare"
     print("OK test_load_segments_valid")
 
 

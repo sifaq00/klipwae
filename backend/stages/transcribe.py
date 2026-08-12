@@ -53,7 +53,10 @@ class TranscribeStage(Stage):
                 str(audio_path),
             ], capture_output=True, check=True, timeout=600)
 
-        segments = run_whisper(audio_path, config.whisper_model, config.whisper_device)
+        segments = run_whisper(
+            audio_path, config.whisper_model, config.whisper_device,
+            initial_prompt=getattr(config, "whisper_initial_prompt", ""),
+        )
 
         out_dir = Path("data/transcripts")
         out_dir.mkdir(parents=True, exist_ok=True)
@@ -72,7 +75,8 @@ def whisper_compute_type(device: str) -> str:
     return "int8" if device == "cpu" else "int8_float16"
 
 
-def run_whisper(audio_path: Path, model_size: str = "medium", device: str = "cpu") -> list[dict]:
+def run_whisper(audio_path: Path, model_size: str = "medium", device: str = "cpu",
+                initial_prompt: str = "") -> list[dict]:
     from faster_whisper import WhisperModel
 
     local_path = Path(__file__).parent.parent / "models" / f"whisper-{model_size}"
@@ -87,8 +91,9 @@ def run_whisper(audio_path: Path, model_size: str = "medium", device: str = "cpu
     segments, info = model.transcribe(
         str(audio_path),
         word_timestamps=True,
-        language="id",
+        language=None,  # auto-detect: nama produk Inggris tidak jadi fonetik Indonesia
         vad_filter=True,
+        initial_prompt=initial_prompt or None,
     )
 
     total = info.duration

@@ -7,6 +7,7 @@ class Settings(BaseSettings):
     analyze_model: str = "gemini-flash-latest"
     whisper_model: str = "large-v3-turbo"
     whisper_device: str = "cuda"
+    whisper_initial_prompt: str = ""
     max_concurrent_jobs: int = 2
     confidence_threshold: float = 0.6
     min_hold_sec: float = 1.2

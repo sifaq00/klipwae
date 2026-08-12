@@ -193,7 +193,7 @@ export function JobDetail({ job, onBack, onRefresh, onRejected, onDelete, videoR
   };
 
   const handleRetry = async () => {
-    if (!confirm("Lanjutkan job dari stage yang gagal?")) return;
+    if (!confirm("Proses ulang pipeline? Stage yang sudah selesai akan di-skip; file yang kurang di-repair.")) return;
     try { await retryJob(job.id); showToast("Job dilanjutkan"); } catch { /* ignore */ }
     onRefresh();
   };
@@ -228,6 +228,15 @@ export function JobDetail({ job, onBack, onRefresh, onRejected, onDelete, videoR
           {job.status === "done" && (
             <button className="btn-ghost px-3 py-1.5 text-xs" onClick={openStyleModal} title="Ubah gaya subtitle episode ini">
               Gaya subtitle
+            </button>
+          )}
+          {job.status === "done" && (
+            <button
+              className="btn-ghost px-3 py-1.5 text-xs"
+              onClick={handleRetry}
+              title="Jalankan ulang pipeline — stage selesai di-skip, work item yang ketinggalan (mis. caption_text) di-repair"
+            >
+              Proses ulang
             </button>
           )}
           {job.running && (

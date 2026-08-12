@@ -1,7 +1,9 @@
 import asyncio
+import io
 import logging
 import logging.handlers
 import os
+import sys
 import threading
 from collections import deque
 from contextlib import asynccontextmanager
@@ -100,7 +102,64 @@ def _job_log_path(job_id: str) -> Path:
     return JOB_LOG_DIR / f"{job_id}.log"
 
 
+class _LogStream(io.TextIOBase):
+    """Stream per thread job — progress whisper/yt-dlp/stages masuk ke
+    SSE + file log job-nya (bukan hilang di console)."""
+
+    def __init__(self, log):
+        self._log = log
+        self._buf = ""
+
+    def write(self, s: str):
+        self._buf += s
+        lines = self._buf.split("\n")
+        self._buf = lines.pop()
+        for line in lines:
+            if line.strip():
+                self._log(line.rstrip())
+        return len(s)
+
+    def flush(self):
+        if self._buf.strip():
+            self._log(self._buf.rstrip())
+            self._buf = ""
+
+
+class _ThreadRoutedStdout(io.TextIOBase):
+    """sys.stdout global — tapi route per-thread ke log job masing-masing.
+    Tanpa ini 2 job jalan bareng race: redirect_stdout menimpa sys.stdout
+    global, print job A bocor ke buffer/SSE job B (progress bar saling
+    tumpang tindih). Thread tanpa stream jatuh ke console."""
+
+    def __init__(self, fallback):
+        self._fallback = fallback
+
+    def write(self, s: str) -> int:
+        stream = JobRunner._thread_streams.get(threading.get_ident())
+        if stream is not None:
+            return stream.write(s)
+        return self._fallback.write(s)
+
+    def flush(self):
+        stream = JobRunner._thread_streams.get(threading.get_ident())
+        if stream is not None:
+            stream.flush()
+        else:
+            self._fallback.flush()
+
+
+def _install_stdout_proxy():
+    """Pasang sekali per proses: semua output stdout lewat proxy, bukan
+    redirect global yang di-race antar thread job."""
+    global _STDOUT_PROXY
+    if _STDOUT_PROXY is None:
+        _STDOUT_PROXY = _ThreadRoutedStdout(sys.stdout)
+        sys.stdout = _STDOUT_PROXY
+
+
 class JobRunner:
+    _thread_streams: dict[int, _LogStream] = {}  # thread ident → stream job-nya
+
     def __init__(self, job_id: str, url: str):
         self.job_id = job_id
         self.url = url
@@ -117,38 +176,16 @@ class JobRunner:
         self.thread.start()
 
     def _run(self, config: Settings):
-        import contextlib
-        import io
-
-        class _LogStream(io.TextIOBase):
-            """Redirect stdout ke log job — progress whisper/yt-dlp/stages
-            masuk ke SSE + file log (bukan hilang di console)."""
-
-            def __init__(self, log):
-                self._log = log
-                self._buf = ""
-
-            def write(self, s: str):
-                self._buf += s
-                lines = self._buf.split("\n")
-                self._buf = lines.pop()
-                for line in lines:
-                    if line.strip():
-                        self._log(line.rstrip())
-                return len(s)
-
-            def flush(self):
-                if self._buf.strip():
-                    self._log(self._buf.rstrip())
-                    self._buf = ""
-
         db = JobDB()
+        stream = _LogStream(self._log)
+        JobRunner._thread_streams[threading.get_ident()] = stream
+        _install_stdout_proxy()
         try:
             runtime.set_job(self.job_id)
             db.create_job(self.job_id, self.url)
-            with contextlib.redirect_stdout(_LogStream(self._log)):
-                run_pipeline(self.job_id, db, config, log_func=self._log)
+            run_pipeline(self.job_id, db, config, log_func=self._log)
         finally:
+            JobRunner._thread_streams.pop(threading.get_ident(), None)
             db.close()
             runtime.clear_job(self.job_id)
             runtime.unregister(self.thread.ident)

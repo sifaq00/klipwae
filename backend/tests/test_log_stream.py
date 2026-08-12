@@ -73,3 +73,51 @@ def test_seq_survives_new_runner_retry():
     got = r2.recent_logs(600)
     assert got == ["line 601"], f"got {got}"
     server._JOB_LOG_SEQ.pop("testjob", None)
+
+
+def test_two_jobs_stdout_does_not_cross():
+    """Bug: 2 job jalan bareng. redirect_stdout GLOBAL → sys.stdout di-race
+    antar thread, print job A bocor ke buffer/SSE job B (progress bar
+    saling tumpang tindih). Proxy harus route per-thread ke log masing-masing."""
+    import threading
+    from io import StringIO
+
+    got: dict[str, list[str]] = {"a": [], "b": []}
+
+    class FakeLog:
+        def __init__(self, name: str):
+            self.name = name
+        def __call__(self, msg: str):
+            got[self.name].append(msg)
+
+    fallback = StringIO()
+    proxy = server._ThreadRoutedStdout(fallback)
+
+    def worker(name: str):
+        stream = server._LogStream(FakeLog(name))
+        server.JobRunner._thread_streams[threading.get_ident()] = stream
+        try:
+            proxy.write(f"progress {name} 1\n")
+            proxy.write(f"progress {name} 2\n")
+        finally:
+            del server.JobRunner._thread_streams[threading.get_ident()]
+
+    t1 = threading.Thread(target=worker, args=("a",))
+    t2 = threading.Thread(target=worker, args=("b",))
+    t1.start(); t2.start(); t1.join(); t2.join()
+
+    assert got["a"] == ["progress a 1", "progress a 2"], got
+    assert got["b"] == ["progress b 1", "progress b 2"], got
+
+    # Thread tanpa stream (main) → jatuh ke fallback, bukan log job
+    proxy.write("console line\n")
+    assert "console line" in fallback.getvalue()
+
+
+def test_main_thread_stdout_falls_back():
+    from io import StringIO
+
+    fallback = StringIO()
+    proxy = server._ThreadRoutedStdout(fallback)
+    proxy.write("hello\n")
+    assert fallback.getvalue() == "hello\n"

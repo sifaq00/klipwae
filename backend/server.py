@@ -63,6 +63,29 @@ def _setup() -> Settings:
     return config
 
 JOB_RUNNERS: dict[str, "JobRunner"] = {}
+
+
+def _cleanup_stale_files():
+    """Retention: buang artefak yang lewat STORAGE_RETENTION_DAYS.
+    Raw video sekarang DISIMPAN (reprocess gak download ulang) — tapi tidak
+    boleh menumpuk selamanya: hapus yang mtime-nya lebih tua dari retention."""
+    import time as _t
+    try:
+        from config import Settings
+        days = Settings().storage_retention_days or 14
+        cutoff = _t.time() - days * 86400
+        for dirpath in ("raw", "clips_raw", "clips_final", "tracks"):
+            d = DATA_DIR / dirpath
+            if not d.exists():
+                continue
+            for p in d.iterdir():
+                try:
+                    if p.is_file() and p.stat().st_mtime < cutoff:
+                        p.unlink(missing_ok=True)
+                except OSError:
+                    pass
+    except Exception:
+        pass
 _REBURN: dict[str, threading.Thread] = {}
 _REBURN_STATUS: dict[str, str] = {}
 # Counter log ABSOLUT per job — PERSISTEN antar retry/runner. Runner baru
@@ -190,6 +213,7 @@ class JobRunner:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    _cleanup_stale_files()
     yield
     for runner in JOB_RUNNERS.values():
         if runner.is_alive:

@@ -92,14 +92,14 @@ def run_pipeline(job_id: str, db: JobDB, config: "Settings", log_func: callable 
 
 
 def _cleanup_raw(job_id: str, log_func: callable = print):
-    """Raw video + audio cuma kepakai sekali buat transcribe & clip.
-    Setelah semua stage selesai, hapus — hemat ~280MB per episode.
-    Retry setelah ini berarti download ulang (file bisa direproduksi)."""
-    for suffix in (".mp4", ".wav"):
-        p = Path(f"data/raw/{job_id}{suffix}")
-        try:
-            if p.exists():
-                p.unlink()
-                log_func(f"  [pipeline] cleaned {p}")
-        except OSError:
-            pass
+    """Hapus audio hasil ekstraksi (.wav) — bisa dibuat ulang dari video.
+    RAW VIDEO DI-SIMPAN sampai retention (config.storage_retention_days):
+    reprocess/"proses ulang" jadi instan, gak download ulang 400MB.
+    Cleanup umur-file jalan di startup server (server.py lifespan)."""
+    p = Path(f"data/raw/{job_id}.wav")
+    try:
+        if p.exists():
+            p.unlink()
+            log_func(f"  [pipeline] cleaned {p}")
+    except OSError:
+        pass

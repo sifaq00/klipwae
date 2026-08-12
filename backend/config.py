@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     storage_retention_days: int = 14
     chunk_duration_min: int = 20
     chunk_overlap_min: int = 2
+    clip_align_sentence: bool = True
     log_level: str = "INFO"
     hf_token: str | None = None
 

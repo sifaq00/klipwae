@@ -73,6 +73,31 @@ def split_segment_ranges(start: float, end: float, words: list[dict],
     return result
 
 
+def align_boundary(words: list[dict], sec: float, direction: str,
+                   window: float = 3.0, min_gap: float = 0.5) -> float:
+    """Geser boundary potongan ke awal kalimat (awal kata setelah jeda ≥ min_gap).
+
+    direction="start": mundur ke jeda TERAKHIR dalam [sec-window, sec).
+    direction="end": maju ke jeda PERTAMA dalam (sec, sec+window].
+    Tidak ada jeda → return sec. Kata kosong → return sec.
+    """
+    if not words:
+        return sec
+    ws = sorted(words, key=lambda w: w["start"])
+    best = None
+    for prev, nxt in zip(ws, ws[1:]):
+        gap = nxt["start"] - prev["end"]
+        if gap < min_gap:
+            continue
+        if direction == "start":
+            if sec - window <= nxt["start"] < sec:
+                best = nxt["start"]  # overwrite → ambil jeda terakhir
+        else:
+            if sec < nxt["start"] <= sec + window:
+                return nxt["start"]  # jeda pertama setelah sec
+    return best if best is not None else sec
+
+
 @register
 class ClipStage(Stage):
     name = "clip"
@@ -131,6 +156,12 @@ class ClipStage(Stage):
                 errors.append({"segment": i, "error": "invalid timestamps"})
                 continue
             ranges = split_segment_ranges(start_sec, end_sec, words)
+            if getattr(config, "clip_align_sentence", False) and words:
+                # Kalimat utuh: mundur ke awal kalimat, maju ke awal kalimat berikut.
+                s0, e0 = ranges[0]
+                ranges[0] = (align_boundary(words, s0, "start"), e0)
+                sL, eL = ranges[-1]
+                ranges[-1] = (sL, align_boundary(words, eL, "end"))
             for k, (s, e) in enumerate(ranges):
                 clip_idx = i * 100 + k
                 clip_path = self._clip_path(job_id, clip_idx, seg)

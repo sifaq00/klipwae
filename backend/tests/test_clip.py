@@ -7,7 +7,7 @@ from types import SimpleNamespace
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from stages.clip import load_segments, split_segment_ranges, ClipStage
+from stages.clip import align_boundary, load_segments, split_segment_ranges, ClipStage
 
 
 def _fake_seg(start="00:01:00", end="00:01:10", product="serum", conf=0.8, topic="skincare"):
@@ -156,6 +156,51 @@ def test_split_segment_ranges_respects_min():
     ranges = split_segment_ranges(0, 100, words, min_sec=25)
     assert ranges[0][1] == 60.0
     print("OK test_split_segment_ranges_respects_min")
+
+
+def test_align_start_moves_back_to_gap():
+    # jeda 2.2s sebelum kata "d" → sec=6.5 di tengah kalimat d-e → mundur ke awal d (5.0)
+    words = [
+        {"text": "a", "start": 0.0, "end": 0.8},
+        {"text": "b", "start": 1.0, "end": 1.8},
+        {"text": "c", "start": 2.0, "end": 2.8},
+        {"text": "d", "start": 5.0, "end": 5.8},
+        {"text": "e", "start": 6.0, "end": 6.8},
+    ]
+    assert align_boundary(words, 6.5, "start") == 5.0
+
+
+def test_align_start_no_gap_in_window():
+    words = [
+        {"text": "a", "start": 0.0, "end": 0.9},
+        {"text": "b", "start": 1.0, "end": 1.9},
+        {"text": "c", "start": 2.0, "end": 2.9},
+    ]
+    assert align_boundary(words, 2.5, "start") == 2.5
+
+
+def test_align_end_moves_forward_to_next_sentence():
+    words = [
+        {"text": "a", "start": 0.0, "end": 0.8},
+        {"text": "b", "start": 1.0, "end": 1.8},
+        {"text": "c", "start": 2.0, "end": 2.8},
+        {"text": "d", "start": 6.0, "end": 6.8},   # gap 3.2s sebelum d
+    ]
+    # sec=3 di tengah jeda, kalimat lanjut di 6.0 → end = 6.0 (awal kalimat baru)
+    assert align_boundary(words, 3.0, "end") == 6.0
+
+
+def test_align_end_no_gap_in_window():
+    words = [
+        {"text": "a", "start": 0.0, "end": 0.8},
+        {"text": "b", "start": 1.0, "end": 1.8},
+    ]
+    assert align_boundary(words, 1.5, "end") == 1.5
+
+
+def test_align_empty_words():
+    assert align_boundary([], 5.0, "start") == 5.0
+    assert align_boundary([], 5.0, "end") == 5.0
 
 
 if __name__ == "__main__":

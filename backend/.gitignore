@@ -1,0 +1,10 @@
+.env
+data/
+models/
+*.db
+logs/
+__pycache__/
+*.pyc
+.venv/
+*.egg-info/
+*.tmp

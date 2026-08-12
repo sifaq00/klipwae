@@ -1,0 +1,72 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply font-body;
+    background-image:
+      radial-gradient(900px 480px at 15% -10%, rgba(20, 184, 166, 0.14), transparent 60%),
+      radial-gradient(800px 420px at 90% -5%, rgba(34, 211, 238, 0.09), transparent 60%),
+      radial-gradient(700px 500px at 50% 110%, rgba(251, 191, 36, 0.05), transparent 60%);
+    background-attachment: fixed;
+  }
+  ::selection {
+    @apply bg-accent/40 text-white;
+  }
+  *::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  *::-webkit-scrollbar-thumb {
+    @apply bg-edge rounded-full;
+  }
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}
+
+@layer components {
+  .glass {
+    @apply bg-panel/80 backdrop-blur-md border border-edge/70 rounded-2xl;
+  }
+  .text-gradient {
+    background: linear-gradient(100deg, #2dd4bf 0%, #0ea5e9 45%, #22d3ee 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .btn-primary {
+    @apply relative overflow-hidden rounded-xl font-display font-semibold text-white
+      transition-all duration-200 active:scale-[0.97] disabled:opacity-40 disabled:cursor-not-allowed;
+    background: linear-gradient(120deg, #14b8a6, #0ea5e9 45%, #22d3ee);
+    box-shadow: 0 0 24px rgba(20, 184, 166, 0.35);
+  }
+  .btn-primary:hover:not(:disabled) {
+    box-shadow: 0 0 38px rgba(20, 184, 166, 0.55);
+  }
+  .btn-ghost {
+    @apply rounded-xl border border-edge bg-raise/60 text-slate-300
+      transition-all duration-150 hover:border-accent/60 hover:text-white
+      active:scale-[0.97] disabled:opacity-40 disabled:cursor-not-allowed;
+  }
+  .chip {
+    @apply inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-medium;
+  }
+  .card-hover {
+    @apply transition-all duration-200 hover:border-accent/40 hover:bg-raise/80;
+  }
+  .input-glass {
+    @apply w-full rounded-xl border border-edge bg-raise/70 px-4 py-3.5 text-sm text-slate-100
+      placeholder:text-slate-500 outline-none transition-all duration-200
+      focus:border-accent/70 focus:shadow-[0_0_0_3px_rgba(20,184,166,0.15)];
+  }
+  .animated-stripes {
+    background-image: repeating-linear-gradient(
+      -45deg,
+      rgba(255, 255, 255, 0.14) 0 6px,
+      transparent 6px 12px
+    );
+    background-size: 24px 24px;
+  }
+}

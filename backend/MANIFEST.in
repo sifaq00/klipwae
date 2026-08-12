@@ -1,0 +1,3 @@
+include db/schema.sql
+include db/migrations/*.sql
+include prompts/product_detection.txt

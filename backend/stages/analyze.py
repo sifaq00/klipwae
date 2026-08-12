@@ -1,0 +1,264 @@
+import json
+import os
+from pathlib import Path
+from types import SimpleNamespace
+
+import structlog
+from google import genai
+from pydantic import BaseModel, Field
+from tenacity import retry, stop_after_attempt, wait_exponential
+
+from stages.base import Stage, StageResult, StageStatus
+from stages.registry import register
+from utils.cost_tracker import calc_cost
+from utils.time_helpers import hms_to_sec, sec_to_hms
+
+logger = structlog.get_logger(__name__)
+
+
+class Segment(BaseModel):
+    start: str
+    end: str
+    product_mentioned: str | None
+    topic: str
+    confidence: float = Field(ge=0.0, le=1.0)
+    reason: str
+    caption_text: str | None = None
+
+
+class AnalysisResult(BaseModel):
+    segments: list[Segment]
+
+
+class CaptionItem(BaseModel):
+    idx: int
+    caption: str
+
+
+class CaptionBatch(BaseModel):
+    captions: list[CaptionItem]
+
+
+def load_transcript(path: Path) -> list[SimpleNamespace]:
+    """Load JSON transkrip, return list objek dengan .start/.end/.text."""
+    data = json.loads(path.read_text(encoding="utf-8"))
+    return [SimpleNamespace(text=s["text"], start=s["start"], end=s["end"]) for s in data]
+
+
+def chunk_transcript(transcript: list[SimpleNamespace], chunk_min: int = 20, overlap_min: int = 2) -> list[list[SimpleNamespace]]:
+    """Split transkrip per chunk_min menit, overlap overlap_min menit di boundary.
+
+    Guard: overlap >= chunk_min raise ValueError (jaga-jaga walau config.py
+    sudah validasi). Transkrip kosong return [].
+    """
+    if not transcript:
+        return []
+    if overlap_min >= chunk_min:
+        raise ValueError(
+            f"chunk_overlap_min ({overlap_min}) harus < chunk_duration_min ({chunk_min})"
+        )
+
+    chunks = []
+    chunk_start = 0.0
+    total_end = transcript[-1].end
+    step = (chunk_min - overlap_min) * 60  # selalu > 0
+
+    while chunk_start < total_end:
+        chunk_end = chunk_start + chunk_min * 60
+        chunk = [s for s in transcript if chunk_start <= s.start < chunk_end]
+        if chunk:
+            chunks.append(chunk)
+        chunk_start += step
+    return chunks
+
+
+def format_chunk_for_prompt(chunk: list[SimpleNamespace]) -> str:
+    """Format chunk ke [HH:MM:SS] teks, tanpa label pembicara."""
+    lines = []
+    for s in chunk:
+        lines.append(f"[{sec_to_hms(s.start)}] {s.text}")
+    return "\n".join(lines)
+
+
+@retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=30))
+def analyze_chunk(client, system_prompt: str, chunk_text: str, model: str) -> tuple[list[Segment], dict]:
+    """Call Gemini dengan response_schema Pydantic. Return (segments, usage).
+
+    Selalu return list (bisa kosong), tidak raise ke caller — kegagalan chunk
+    individual TIDAK BOLEH menggagalkan seluruh job (plan Section 11).
+    """
+    try:
+        response = client.models.generate_content(
+            model=model,
+            contents=chunk_text,
+            config={
+                "system_instruction": system_prompt,
+                "response_mime_type": "application/json",
+                "response_schema": AnalysisResult,
+                "temperature": 0.1,
+            },
+        )
+        result: AnalysisResult = response.parsed
+        usage = {}
+        if hasattr(response, "usage_metadata") and response.usage_metadata:
+            usage = {
+                "input_tokens": response.usage_metadata.prompt_token_count,
+                "output_tokens": response.usage_metadata.candidates_token_count,
+            }
+        return result.segments, usage
+    except Exception as e:
+        logger.warning("analyze_chunk_skipped", error=str(e))
+        return [], {"input_tokens": 0, "output_tokens": 0}
+
+
+@retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=30))
+def generate_captions(client, system_prompt: str, segments: list[Segment], model: str) -> dict[int, str]:
+    """Generate caption TikTok per segmen — SATU call untuk semua segmen.
+
+    Gagal → return {} (caption kosong), JANGAN menggagalkan job. Caption
+    bukan artefak kritis; klip tetap jadi.
+    """
+    try:
+        payload = [
+            {"idx": i, "start": s.start, "end": s.end,
+             "product": s.product_mentioned, "topic": s.topic}
+            for i, s in enumerate(segments)
+        ]
+        response = client.models.generate_content(
+            model=model,
+            contents=json.dumps(payload, ensure_ascii=False),
+            config={
+                "system_instruction": system_prompt,
+                "response_mime_type": "application/json",
+                "response_schema": CaptionBatch,
+                "temperature": 0.7,
+            },
+        )
+        if not response.parsed:
+            return {}
+        return {c.idx: c.caption for c in response.parsed.captions}
+    except Exception as e:
+        logger.warning("caption_generation_skipped", error=str(e))
+        return {}
+
+
+def overlap_ratio(a: Segment, b: Segment) -> float:
+    """Rasio overlap terhadap segmen LEBIH PENDEK — supaya segmen pendek yang
+    termuat di segmen panjang tetap kedeteksi sebagai duplikat."""
+    a_start, a_end = hms_to_sec(a.start), hms_to_sec(a.end)
+    b_start, b_end = hms_to_sec(b.start), hms_to_sec(b.end)
+    overlap = max(0.0, min(a_end, b_end) - max(a_start, b_start))
+    shorter = min(a_end - a_start, b_end - b_start)
+    return overlap / shorter if shorter > 0 else 0.0
+
+
+def merge_and_dedupe(all_segments: list[Segment], overlap_threshold: float = 0.7) -> list[Segment]:
+    """Gabung + buang duplikat: kalau overlap > threshold, ambil confidence
+    lebih tinggi."""
+    ordered = sorted(all_segments, key=lambda s: hms_to_sec(s.start))
+    kept: list[Segment] = []
+    for seg in ordered:
+        duplicate_of = None
+        for i, existing in enumerate(kept):
+            if overlap_ratio(seg, existing) > overlap_threshold:
+                duplicate_of = i
+                break
+        if duplicate_of is None:
+            kept.append(seg)
+        elif seg.confidence > kept[duplicate_of].confidence:
+            kept[duplicate_of] = seg
+    return kept
+
+
+def _write_segments_atomic(job_id: str, segments: list[Segment]):
+    """Tulis ke .tmp dulu, rename ke final — supaya is_complete tidak pernah
+    lihat file setengah-jadi (plan Section 4.1 bug trap)."""
+    final_path = Path(f"data/segments/{job_id}.json")
+    final_path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = final_path.with_suffix(".json.tmp")
+    tmp_path.write_text(
+        json.dumps([s.model_dump() for s in segments], ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    os.replace(str(tmp_path), str(final_path))
+
+
+@register
+class AnalyzeStage(Stage):
+    name = "analyze"
+    depends_on = ["transcribe"]
+
+    def is_complete(self, job_id: str, db) -> bool:
+        # Plan Section 4.1 bug trap: cek file AND sinyal DB (metrics entry).
+        # File ada (atomic write) + metrics recorded = stage beneran selesai.
+        if not Path(f"data/segments/{job_id}.json").exists():
+            return False
+        if db is None:
+            return True
+        row = db.conn.execute(
+            "SELECT 1 FROM metrics WHERE job_id=? AND stage='analyze' LIMIT 1",
+            (job_id,),
+        ).fetchone()
+        return row is not None
+
+    def run(self, job_id: str, db, config):
+        transcript_path = Path(f"data/transcripts/{job_id}.json")
+        if not transcript_path.exists():
+            return StageResult(status=StageStatus.FAILED, error=f"Transcript not found: {transcript_path}")
+
+        transcript = load_transcript(transcript_path)
+
+        try:
+            chunks = chunk_transcript(
+                transcript,
+                chunk_min=config.chunk_duration_min,
+                overlap_min=config.chunk_overlap_min,
+            )
+        except ValueError as e:
+            return StageResult(status=StageStatus.FAILED, error=str(e))
+
+        if not chunks:
+            _write_segments_atomic(job_id, [])
+            db.record_metric(job_id, stage="analyze", cost_usd=0.0, extra={"segments_found": 0, "chunks_processed": 0})
+            return StageResult(status=StageStatus.DONE, metadata={"segments_found": 0})
+
+        client = genai.Client(api_key=config.google_api_key)
+        system_prompt = Path("prompts/product_detection.txt").read_text(encoding="utf-8")
+
+        all_segments: list[Segment] = []
+        total_cost = 0.0
+        chunks_processed = 0
+        total_chunks = len(chunks)
+        for i, chunk in enumerate(chunks, 1):
+            print(f"    analyze {i}/{total_chunks} chunks")
+            chunk_text = format_chunk_for_prompt(chunk)
+            segments, usage = analyze_chunk(client, system_prompt, chunk_text, config.analyze_model)
+            all_segments.extend(segments)
+            total_cost += calc_cost(usage, config.analyze_model)
+            chunks_processed += 1
+
+        merged = merge_and_dedupe(all_segments)
+        final = [s for s in merged if s.confidence >= config.confidence_threshold]
+
+        if final:
+            caption_prompt_path = Path("prompts/caption_generator.txt")
+            if caption_prompt_path.exists():
+                caption_prompt = caption_prompt_path.read_text(encoding="utf-8")
+                captions = generate_captions(client, caption_prompt, final, config.analyze_model)
+                for i, seg in enumerate(final):
+                    seg.caption_text = captions.get(i)
+
+        _write_segments_atomic(job_id, final)
+        db.insert_segments(job_id, final)
+        db.record_metric(
+            job_id,
+            stage="analyze",
+            cost_usd=total_cost,
+            extra={"segments_found": len(final), "chunks_processed": chunks_processed},
+        )
+
+        return StageResult(
+            status=StageStatus.DONE,
+            output_path=f"data/segments/{job_id}.json",
+            metadata={"segments_found": len(final), "cost_usd": total_cost},
+        )

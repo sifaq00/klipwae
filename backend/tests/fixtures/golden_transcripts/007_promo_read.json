@@ -1,0 +1,8 @@
+{
+  "transcript": [
+    {"text": "produk ini bagus sekali", "start": 0.0, "end": 2.0},
+    {"text": "pesan sekarang juga dapatkan diskon lima puluh persen", "start": 2.0, "end": 5.0},
+    {"text": "kunjungi website kami di link deskripsi", "start": 5.0, "end": 7.0}
+  ],
+  "expected_segments": []
+}

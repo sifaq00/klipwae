@@ -1,0 +1,11 @@
+{
+  "transcript": [
+    {"text": "kali ini aku mau kasih rekomendasi produk skincare", "start": 0.0, "end": 3.0},
+    {"text": "ada serum vitamin c, toner, dan moisturizer", "start": 3.0, "end": 6.0},
+    {"text": "yang paling aku suka serum vitamin c dari brand lokal", "start": 6.0, "end": 9.0},
+    {"text": "dipakai dua minggu wajah kelihatan lebih cerah", "start": 9.0, "end": 12.0}
+  ],
+  "expected_segments": [
+    {"start": "00:00:06", "end": "00:00:12", "min_confidence": 0.75}
+  ]
+}

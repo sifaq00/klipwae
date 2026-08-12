@@ -1,0 +1,11 @@
+{
+  "transcript": [
+    {"text": "banyak yang tanya bedanya creatine dan protein", "start": 0.0, "end": 3.0},
+    {"text": "creatine buat power saat latihan angkat beban", "start": 3.0, "end": 6.0},
+    {"text": "sedangkan whey protein buat pemulihan otot", "start": 6.0, "end": 9.0}
+  ],
+  "expected_segments": [
+    {"start": "00:00:03", "end": "00:00:06", "min_confidence": 0.75},
+    {"start": "00:00:06", "end": "00:00:09", "min_confidence": 0.75}
+  ]
+}

@@ -18,11 +18,11 @@ if %errorlevel%==0 (
     pause
     exit /b 1
 )
-start "klipwae-api" /b cmd /c "cd /d D:\Project\auto-clipper-app\backend && set BACKEND_PORT=%BACKEND_PORT% && .venv\Scripts\python.exe -m uvicorn server:app --port %BACKEND_PORT% --reload"
+start "klipwae-api" cmd /c "cd /d D:\Project\auto-clipper-app\backend && set BACKEND_PORT=%BACKEND_PORT% && .venv\Scripts\python.exe -m uvicorn server:app --port %BACKEND_PORT% --reload"
 
 :frontend
 rem ---- Cek frontend ----
-curl -s http://localhost:%FRONTEND_PORT%/ | findstr "Auto-Clipper" >nul
+curl -s http://localhost:%FRONTEND_PORT%/ | findstr "Klipwae" >nul
 if %errorlevel%==0 (
     echo [OK] Frontend Klipwae sudah jalan di port %FRONTEND_PORT%, skip start.
     goto :open
@@ -34,7 +34,7 @@ if %errorlevel%==0 (
     pause
     exit /b 1
 )
-start "klipwae-ui" /b cmd /c "cd /d D:\Project\auto-clipper-app\frontend && set PORT=%FRONTEND_PORT% && npm run dev"
+start "klipwae-ui" cmd /c "cd /d D:\Project\auto-clipper-app\frontend && set PORT=%FRONTEND_PORT% && npm run dev"
 
 :open
 rem Tunggu sebentar biar servis sempat boot, lalu buka browser
@@ -44,11 +44,12 @@ start http://localhost:%FRONTEND_PORT%
 echo.
 echo ============================================================
 echo   Klipwae Studio JALAN.
-echo   Backend  : http://localhost:%BACKEND_PORT%
-echo   Frontend : http://localhost:%FRONTEND_PORT%
-echo.
-echo   TUTUP WINDOW INI = HENTIKAN SEMUA PROSES.
-echo ============================================================
+echo   Backend  : http://localhost:%BACKEND_PORT%
+echo   Frontend : http://localhost:%FRONTEND_PORT%
+echo.
+echo   Backend & Frontend jalan di window masing-masing
+echo   (tutup window klipwae-api / klipwae-ui = hentikan proses itu)
+echo ============================================================
 echo.
 
 :loop

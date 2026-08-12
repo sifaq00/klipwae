@@ -71,9 +71,17 @@ export function JobDetail({ job, onBack, onRefresh, onRejected, onDelete, videoR
         const p = parseProgress(line);
         if (p) setProgress(p);
       }, () => {
-        closed = true;
+        // "done" bisa datang dari replay job yang kelar — atau server restart
+        // di tengah job. Kalau job masih running, sambung ulang dari awal.
         getSegments(job.id).then(setSegments).catch(() => {});
         onRefresh();
+        if (job.running) {
+          since = 0;
+          es = null;
+          connect();
+          return;
+        }
+        closed = true;
       }, since);
       es.onerror = () => {
         es?.close();

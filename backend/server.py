@@ -79,6 +79,7 @@ class JobRunner:
         self.url = url
         self.thread: threading.Thread | None = None
         self.log_buffer: deque[str] = deque(maxlen=500)
+        self._log_seq = 0  # counter ABSOLUT baris log (buffer cuma 500 terakhir)
         self._log_event = threading.Event()
         self._done = threading.Event()
 
@@ -134,6 +135,7 @@ class JobRunner:
 
     def _log(self, msg: str):
         self.log_buffer.append(msg)
+        self._log_seq += 1
         self._log_event.set()
         # Persist per job — log tetap kebaca setelah server restart
         try:
@@ -167,8 +169,14 @@ class JobRunner:
         return self.thread is not None and self.thread.is_alive()
 
     def recent_logs(self, since: int = 0) -> list[str]:
+        """Baris sejak index ABSOLUT `since`. Buffer cuma 500 terakhir:
+        kalau peminta ketinggalan jauh (since < base), replay seluruh buffer
+        — tanpa ini SSE beku diam-diam setelah >500 baris ter-stream."""
         buf = list(self.log_buffer)
-        return buf[since:]
+        base = self._log_seq - len(buf)
+        if since < base:
+            since = base
+        return buf[since - base:]
 
 
 # ─── Lifespan ────────────────────────────────────────────────────────────────

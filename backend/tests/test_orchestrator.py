@@ -126,6 +126,51 @@ def test_run_with_retry_always_fails():
     print("OK test_run_with_retry_always_fails")
 
 
+class _AnalyzeStage(Stage):
+    def __init__(self, segments_found: int = -1):
+        self.name = "analyze"
+        self.depends_on = []
+        self._segments_found = segments_found
+
+    def is_complete(self, job_id, db): return False
+    def run(self, job_id, db, config):
+        if self._segments_found < 0:
+            return StageResult(status=StageStatus.FAILED, error="boom")
+        return StageResult(status=StageStatus.DONE, metadata={"segments_found": self._segments_found})
+
+
+def _run_with_stage(stage, db):
+    import orchestrator
+    original = orchestrator.STAGE_REGISTRY
+    orchestrator.STAGE_REGISTRY = {"analyze": stage}
+    try:
+        orchestrator.run_pipeline("job1", db, MagicMock())
+    finally:
+        orchestrator.STAGE_REGISTRY = original
+
+
+def test_pipeline_notice_when_zero_segments():
+    db = MagicMock()
+    _run_with_stage(_AnalyzeStage(segments_found=0), db)
+    db.set_notice.assert_called_once()
+    assert "Tidak ditemukan segmen produk" in db.set_notice.call_args[0][1]
+    print("OK test_pipeline_notice_when_zero_segments")
+
+
+def test_pipeline_clears_notice_when_segments_found():
+    db = MagicMock()
+    _run_with_stage(_AnalyzeStage(segments_found=3), db)
+    db.set_notice.assert_called_once_with("job1", None)
+    print("OK test_pipeline_clears_notice_when_segments_found")
+
+
+def test_pipeline_no_notice_on_analyze_failure():
+    db = MagicMock()
+    _run_with_stage(_AnalyzeStage(segments_found=-1), db)
+    db.set_notice.assert_not_called()
+    print("OK test_pipeline_no_notice_on_analyze_failure")
+
+
 def test_run_pipeline_skip_complete():
     stage = _MockStage("a")
     stage.is_complete = lambda j, db: True
@@ -152,5 +197,8 @@ if __name__ == "__main__":
     test_run_with_retry_success_first()
     test_run_with_retry_transient_then_ok()
     test_run_with_retry_always_fails()
+    test_pipeline_notice_when_zero_segments()
+    test_pipeline_clears_notice_when_segments_found()
+    test_pipeline_no_notice_on_analyze_failure()
     test_run_pipeline_skip_complete()
     print("\nAll orchestrator tests passed.")

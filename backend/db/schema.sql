@@ -7,6 +7,7 @@ CREATE TABLE IF NOT EXISTS jobs (
     status         TEXT DEFAULT 'pending',
     failed_stage   TEXT,
     error_message  TEXT,
+    notice         TEXT,
     created_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );

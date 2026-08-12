@@ -7,6 +7,7 @@ export interface Job {
   status: string;
   failed_stage: string | null;
   error_message: string | null;
+  notice?: string | null;
   created_at: string;
   updated_at: string;
   running?: boolean;

@@ -37,6 +37,8 @@ def _ensure_columns(conn: sqlite3.Connection):
     job_cols = {r[1] for r in conn.execute("PRAGMA table_info(jobs)")}
     if "caption_style" not in job_cols:
         conn.execute("ALTER TABLE jobs ADD COLUMN caption_style TEXT")
+    if "notice" not in job_cols:
+        conn.execute("ALTER TABLE jobs ADD COLUMN notice TEXT")
     # DB lama dibuat sebelum UNIQUE(job_id, clip_idx) ada di schema.sql —
     # upsert ON CONFLICT butuh index ini (bug ketemu saat validasi e2e).
     conn.execute(
@@ -70,6 +72,15 @@ class JobDB:
         self.conn.execute(
             "UPDATE jobs SET status=?, failed_stage=?, error_message=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
             (status, failed_stage, error, job_id),
+        )
+        self.conn.commit()
+
+    def set_notice(self, job_id: str, notice: str | None):
+        """Info non-fatal buat user (mis. 'tidak ditemukan segmen produk').
+        Notice di-cover saat job di-retry ulang."""
+        self.conn.execute(
+            "UPDATE jobs SET notice=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
+            (notice, job_id),
         )
         self.conn.commit()
 

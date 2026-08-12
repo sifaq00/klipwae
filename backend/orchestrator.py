@@ -76,6 +76,14 @@ def run_pipeline(job_id: str, db: JobDB, config: "Settings", log_func: callable 
         db.mark_job_status(job_id, status_text)
         log_func(f"  [{status_text}] starting...")
         result = run_with_retry(stage, job_id, db, config)
+        if stage.name == "analyze":
+            # Info non-fatal: episode tanpa segmen produk — tampilkan di UI,
+            # bukan dianggap error.
+            found = (result.metadata or {}).get("segments_found", -1)
+            if result.status != StageStatus.FAILED and found == 0 and not runtime.stop_requested():
+                db.set_notice(job_id, "Tidak ditemukan segmen produk di episode ini — coba episode yang membahas produk (review, haul, demo).")
+            elif found > 0:
+                db.set_notice(job_id, None)  # run ulang ketemu segmen → bersihkan
         if result.status == StageStatus.FAILED:
             if result.error == "Killed":
                 db.mark_job_status(job_id, "killed")

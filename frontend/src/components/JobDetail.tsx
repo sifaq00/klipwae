@@ -265,6 +265,9 @@ export function JobDetail({ job, onBack, onRefresh, onRejected, onDelete, videoR
         {job.status === "failed" && job.error_message && (
           <p className="mt-3 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-300">{job.error_message}</p>
         )}
+        {job.notice && (
+          <p className="mt-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-300">{job.notice}</p>
+        )}
 
         {/* ── Progress bar live ── */}
         {job.running && (

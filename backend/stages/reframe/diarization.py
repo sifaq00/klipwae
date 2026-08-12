@@ -79,7 +79,9 @@ def map_speakers_to_sides(diar: list[tuple[float, float, str]], mar: list[tuple[
     if not diar:
         return mar
     if not mar:
-        return [("previous" if s != "previous" else s, e, s) if False else (s, e, "left") for s, e, _ in diar]
+        # MAR gagal — jangan tebak sisi. "previous" diserahkan ke
+        # build_camera_path (lanjut sisi aktif).
+        return [(s, e, "previous") for s, e, _ in diar]
 
     out = []
     for ds, de, speaker in diar:

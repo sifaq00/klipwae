@@ -65,6 +65,10 @@ def _setup() -> Settings:
 JOB_RUNNERS: dict[str, "JobRunner"] = {}
 _REBURN: dict[str, threading.Thread] = {}
 _REBURN_STATUS: dict[str, str] = {}
+# Counter log ABSOLUT per job — PERSISTEN antar retry/runner. Runner baru
+# me-reset buffer, tapi klien SSE pakai sejak absolut: tanpa ini, retry
+# langsung bikin SSE klien beku (sejak nembus buffer baru yang kosong).
+_JOB_LOG_SEQ: dict[str, int] = {}
 
 JOB_LOG_DIR = Path(__file__).parent / "data" / "job_logs"
 
@@ -78,8 +82,7 @@ class JobRunner:
         self.job_id = job_id
         self.url = url
         self.thread: threading.Thread | None = None
-        self.log_buffer: deque[str] = deque(maxlen=500)
-        self._log_seq = 0  # counter ABSOLUT baris log (buffer cuma 500 terakhir)
+        self.log_buffer: deque[tuple[int, str]] = deque(maxlen=500)
         self._log_event = threading.Event()
         self._done = threading.Event()
 
@@ -134,8 +137,9 @@ class JobRunner:
         self._log_event.set()
 
     def _log(self, msg: str):
-        self.log_buffer.append(msg)
-        self._log_seq += 1
+        seq = _JOB_LOG_SEQ.get(self.job_id, 0) + 1
+        _JOB_LOG_SEQ[self.job_id] = seq
+        self.log_buffer.append((seq, msg))
         self._log_event.set()
         # Persist per job — log tetap kebaca setelah server restart
         try:
@@ -169,14 +173,16 @@ class JobRunner:
         return self.thread is not None and self.thread.is_alive()
 
     def recent_logs(self, since: int = 0) -> list[str]:
-        """Baris sejak index ABSOLUT `since`. Buffer cuma 500 terakhir:
-        kalau peminta ketinggalan jauh (since < base), replay seluruh buffer
-        — tanpa ini SSE beku diam-diam setelah >500 baris ter-stream."""
+        """Baris sejak index ABSOLUT `since` (exclusive). Buffer cuma 500
+        terakhir, index persisten per job lintas retry/runner. Klien yang
+        ketinggalan jauh (since di bawah window) di-replay seluruh buffer —
+        dulu slice kosong → SSE beku diam-diam."""
         buf = list(self.log_buffer)
-        base = self._log_seq - len(buf)
-        if since < base:
-            since = base
-        return buf[since - base:]
+        if not buf:
+            return []
+        if since < buf[0][0]:
+            return [m for _, m in buf]
+        return [m for s, m in buf if s > since]
 
 
 # ─── Lifespan ────────────────────────────────────────────────────────────────

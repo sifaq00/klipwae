@@ -7,9 +7,9 @@ import server
 
 
 def _runner():
+    server._JOB_LOG_SEQ.pop("testjob", None)
     r = server.JobRunner("testjob", "https://example.com")
     r.log_buffer.clear()
-    r._log_seq = 0
     return r
 
 
@@ -20,9 +20,9 @@ def test_recent_logs_after_500_lines_does_not_freeze():
     r = _runner()
     for i in range(600):
         r._log(f"line {i}")
-    assert len(r.log_buffer) == 500  # window sekarang index 100..599
+    assert len(r.log_buffer) == 500  # window sekarang seq 101..600
 
-    # Klien stuck di since=100 (ketinggalan 500 baris) → replay seluruh window
+    # Klien stuck di since=100 (ketinggalan jauh) → replay seluruh window
     got = r.recent_logs(100)
     assert len(got) == 500, f"harus replay seluruh buffer, got {len(got)}"
     assert got[0] == "line 100" and got[-1] == "line 599"
@@ -32,7 +32,7 @@ def test_recent_logs_caught_up_gets_new_lines():
     r = _runner()
     for i in range(600):
         r._log(f"line {i}")
-    # Klien sudah menerima sampai sejak=600 (up-to-date) → baris BARU muncul
+    # Klien sudah menerima sampai since=600 (up-to-date) → baris BARU muncul
     assert r.recent_logs(600) == []
     r._log("line 600")
     assert r.recent_logs(600) == ["line 600"]
@@ -42,7 +42,6 @@ def test_recent_logs_in_window():
     r = _runner()
     for i in range(600):
         r._log(f"line {i}")
-    # since di dalam window buffer (base=100): hanya baris sejak base
     got = r.recent_logs(200)
     assert len(got) == 400, f"got {len(got)}"
     assert got[0] == "line 200"
@@ -55,3 +54,22 @@ def test_recent_logs_initial():
     assert r.recent_logs(0) == ["a", "b"]
     assert r.recent_logs(1) == ["b"]
     assert r.recent_logs(99) == []  # tidak ada baris baru, bukan replay lagi
+
+
+def test_seq_survives_new_runner_retry():
+    """Bug inti retry: runner BARU me-reset buffer tapi seq harus LANJUT —
+    kalau tidak, klien sejak >500 langsung beku di runner baru."""
+    server._JOB_LOG_SEQ.pop("testjob", None)
+    r1 = server.JobRunner("testjob", "https://example.com")
+    r1.log_buffer.clear()
+    for i in range(600):
+        r1._log(f"line {i}")  # seq 1..600
+
+    # Job di-retry → runner LAMA mati, runner BARU (buffer kosong)
+    r2 = server.JobRunner("testjob", "https://example.com")
+    r2.log_buffer.clear()
+    assert r2.recent_logs(600) == []  # belum ada baris baru
+    r2._log("line 601")  # seq LANJUT 601, bukan reset ke 1
+    got = r2.recent_logs(600)
+    assert got == ["line 601"], f"got {got}"
+    server._JOB_LOG_SEQ.pop("testjob", None)

@@ -48,3 +48,9 @@ def test_transcribe_atomic_write():
 
 if __name__ == "__main__":
     test_transcribe_atomic_write()
+
+
+def test_whisper_compute_type():
+    from stages.transcribe import whisper_compute_type
+    assert whisper_compute_type("cpu") == "int8"
+    assert whisper_compute_type("cuda") == "int8_float16"

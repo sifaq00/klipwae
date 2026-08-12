@@ -66,6 +66,12 @@ class TranscribeStage(Stage):
         return StageResult(status=StageStatus.DONE, output_path=str(final_path))
 
 
+def whisper_compute_type(device: str) -> str:
+    """int8_float16 untuk cuda: RTX 2050 4GB tidak muat float16 penuh,
+    int8_float16 kualitas hampir setara dengan VRAM ~1.3GB."""
+    return "int8" if device == "cpu" else "int8_float16"
+
+
 def run_whisper(audio_path: Path, model_size: str = "medium", device: str = "cpu") -> list[dict]:
     from faster_whisper import WhisperModel
 
@@ -75,7 +81,7 @@ def run_whisper(audio_path: Path, model_size: str = "medium", device: str = "cpu
     sys.stdout.write("\r" + " " * 60 + "\r")  # clear line from any previous failed attempt
     sys.stdout.flush()
     print("    Loading model...", end="", flush=True)
-    model = WhisperModel(model_path, device=device, compute_type="int8" if device == "cpu" else "float16")
+    model = WhisperModel(model_path, device=device, compute_type=whisper_compute_type(device))
     print("done", flush=True)
 
     segments, info = model.transcribe(

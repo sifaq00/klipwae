@@ -13,7 +13,7 @@ def test_settings_defaults():
         from config import Settings
         s = Settings(_env_file=None)
         assert s.analyze_model == "gemini-flash-latest"
-        assert s.whisper_model == "medium"
+        assert s.whisper_model == "large-v3-turbo"
         assert s.max_concurrent_jobs == 2
         assert s.confidence_threshold == 0.6
         assert s.min_hold_sec == 1.2

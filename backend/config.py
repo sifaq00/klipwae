@@ -5,7 +5,7 @@ from pydantic_settings import BaseSettings
 class Settings(BaseSettings):
     google_api_key: str
     analyze_model: str = "gemini-flash-latest"
-    whisper_model: str = "medium"
+    whisper_model: str = "large-v3-turbo"
     whisper_device: str = "cuda"
     max_concurrent_jobs: int = 2
     confidence_threshold: float = 0.6

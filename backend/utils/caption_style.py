@@ -25,7 +25,7 @@ DEFAULT_STYLE: dict = {
     "shadow": 3,
     "shadow_color": "#000000",
     "position": "bottom",
-    "margin_v": 100,
+    "margin_v": 240,  # TikTok UI safe zone — subtitle tidak ketutup elemen bawah
     "style": "highlight",
 }
 

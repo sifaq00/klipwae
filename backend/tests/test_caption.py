@@ -116,7 +116,7 @@ def test_generate_ass_highlight_karaoke_lines():
     assert "{\\c&H00FFFF" in ass
     assert "halo{\\c&HFFFFFF}" in ass or "dunia{\\c&HFFFFFF}" in ass
     # Pop = static scale pada kata aktif
-    assert "\\fscx112\\fscy112" in ass
+    assert "\\fscx106\\fscy106" in ass
     print("OK test_generate_ass_highlight_karaoke_lines")
 
 
@@ -143,6 +143,11 @@ def test_generate_ass_empty():
     assert "[Script Info]" in ass
     assert "Dialogue:" not in ass
     print("OK test_generate_ass_empty")
+
+
+def test_default_style_margin_safe_for_tiktok():
+    from utils.caption_style import DEFAULT_STYLE
+    assert DEFAULT_STYLE["margin_v"] == 240
 
 
 def test_caption_stage_no_clips(tmp_path: Path):

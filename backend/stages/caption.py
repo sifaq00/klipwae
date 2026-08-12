@@ -135,7 +135,7 @@ def generate_ass(words: list[dict], style: str = "highlight",
         hl = _hex_to_bgr(style_cfg.get("highlight_color", "#FFFF00"))
         txt = _hex_to_bgr(style_cfg.get("text_color", "#FFFFFF"))
         pop = bool(style_cfg.get("pop", False))
-        active_scale = "\\fscx112\\fscy112" if pop else ""
+        active_scale = "\\fscx106\\fscy106" if pop else ""
         for sent in sentences:
             texts = [_text(w) for w in sent]
             wrapped = _wrap(texts, wrap_max_chars)

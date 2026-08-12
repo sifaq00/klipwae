@@ -1,6 +1,6 @@
-"""Render 9:16 dengan kamera halus mengikuti pembicara aktif (YOLO boxes).
+﻿"""Render 9:16 dengan kamera halus mengikuti pembicara aktif (YOLO boxes).
 
-Loop frame per frame di Python → crop mengikuti box target (EMA smoothing) →
+Loop frame per frame di Python â†’ crop mengikuti box target (EMA smoothing) â†’
 pipe ke ffmpeg NVENC. Audio di-mux dari source. Gaya Opus Clip: pan halus
 + zoom dalam saat bicara.
 """
@@ -12,17 +12,7 @@ import numpy as np
 
 from utils.ffmpeg_helpers import run_ffmpeg
 
-SMOOTH_ALPHA = 0.12    # EMA posisi kamera (lebih lambat = makin buttery)
-TARGET_ALPHA = 0.35    # EMA box target (buang noise deteksi per-frame)
-DEADBAND = 0.006       # fraksi frame: target geser di bawah ini → kamera DIAM
 CONF_MIN = 0.35        # box di bawah confidence ini diabaikan
-HOLD_SEC = 0.5         # tahan posisi kamera berapa detik kalau track hilang
-HEAD_BIAS = 0.32       # target vertikal: 32% dari atas box (framing kepala)
-ZOOM_FIT = 0.62        # tinggi orang ≈ 62% frame saat aktif (auto-zoom)
-ZOOM_MIN = 1.1
-ZOOM_MAX = 1.8
-ZOOM_IDLE = 1.05       # zoom zona pas nggak ngomong
-ZOOM_EASE = 0.06       # kecepatan zoom berubah per frame (ease halus)
 
 
 def render_tracked(
@@ -35,8 +25,18 @@ def render_tracked(
     target_w: int = 1080,
     target_h: int = 1920,
     clip_no: str = "",
+    smooth_alpha: float = 0.12,
+    target_alpha: float = 0.35,
+    deadband: float = 0.006,
+    hold_sec: float = 0.5,
+    head_bias: float = 0.30,
+    zoom_fit: float = 0.6,
+    zoom_min: float = 1.15,
+    zoom_max: float = 2.0,
+    zoom_idle: float = 1.05,
+    zoom_ease: float = 0.06,
 ):
-    # zone_names: side string → zona int (dari assign_zones median)
+    # zone_names: side string â†’ zona int (dari assign_zones median)
     zone_names = {0: "left", 1: "right"}
     has_path = bool(camera_path)
 
@@ -50,7 +50,7 @@ def render_tracked(
         ["ffmpeg", "-y", "-f", "rawvideo", "-pix_fmt", "bgr24",
          "-s", f"{target_w}x{target_h}", "-r", str(fps),
          "-i", "-",
-         # Bug ffmpeg 8.1.1: NVENC + rawvideo bgr24 → pix_fmt gbrp (plane
+         # Bug ffmpeg 8.1.1: NVENC + rawvideo bgr24 â†’ pix_fmt gbrp (plane
          # GBR ke-swap) yang bikin Chrome render hijau. Paksa yuv420p +
          # tag smpte170m (BT.601) biar player decode benar.
          "-vf", "format=yuv420p",
@@ -62,11 +62,11 @@ def render_tracked(
 
     cx, cy = w / 2, h / 2
     t_cx, t_cy = w / 2, h / 2   # target halus (EMA kedua)
-    zoom = ZOOM_IDLE
-    db_x = w * DEADBAND
-    db_y = h * DEADBAND
+    zoom = zoom_idle
+    db_x = w * deadband
+    db_y = h * deadband
     hold_left = 0
-    hold_frames = int(HOLD_SEC * fps)
+    hold_frames = int(hold_sec * fps)
     idx = 0
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     while True:
@@ -74,7 +74,7 @@ def render_tracked(
         if not ret:
             break
         t = idx / fps
-        # progres render per ~10% — bar tetap gerak selama ffmpeg pipe
+        # progres render per ~10% â€” bar tetap gerak selama ffmpeg pipe
         if total_frames and idx % max(1, total_frames // 10) == 0:
             print(f"    reframe render {clip_no} {idx / total_frames * 100:.0f}%")
         seg = None
@@ -98,34 +98,34 @@ def render_tracked(
 
             if box:
                 bx = (box[1] + box[3]) / 2
-                by = box[2] + (box[4] - box[2]) * HEAD_BIAS
+                by = box[2] + (box[4] - box[2]) * head_bias
                 # EMA kedua: target box sendiri dihaluskan dulu (buang jitter deteksi)
-                t_cx += (bx - t_cx) * TARGET_ALPHA
-                t_cy += (by - t_cy) * TARGET_ALPHA
-                # Deadband: target geser dikit → kamera DIAM (kill micro-jitter)
+                t_cx += (bx - t_cx) * target_alpha
+                t_cy += (by - t_cy) * target_alpha
+                # deadband: target geser dikit â†’ kamera DIAM (kill micro-jitter)
                 dx = t_cx - cx
                 dy = t_cy - cy
                 if abs(dx) > db_x:
-                    cx += dx * SMOOTH_ALPHA
+                    cx += dx * smooth_alpha
                 if abs(dy) > db_y:
-                    cy += dy * SMOOTH_ALPHA
+                    cy += dy * smooth_alpha
                 # Auto-zoom dari ukuran box: orang pas ~62% tinggi frame
                 box_h = max(1.0, box[4] - box[2])
-                target_zoom = max(ZOOM_MIN, min(ZOOM_MAX, (h * ZOOM_FIT) / box_h))
+                target_zoom = max(zoom_min, min(zoom_max, (h * zoom_fit) / box_h))
                 hold_left = hold_frames
             else:
-                # Track hilang sesaat → TAHAN posisi (jangan drift langsung)
+                # Track hilang sesaat â†’ TAHAN posisi (jangan drift langsung)
                 if hold_left > 0:
                     hold_left -= 1
                 else:
                     cx += (w / 2 - cx) * 0.02
                     cy += (h / 2 - cy) * 0.02
-                    target_zoom = ZOOM_IDLE
+                    target_zoom = zoom_idle
         else:
-            target_zoom = ZOOM_IDLE
+            target_zoom = zoom_idle
 
         if target_zoom is not None:
-            zoom += (target_zoom - zoom) * ZOOM_EASE
+            zoom += (target_zoom - zoom) * zoom_ease
 
         crop_w = (w / zoom)
         crop_h = crop_w * (target_h / target_w)

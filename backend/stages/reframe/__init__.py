@@ -97,12 +97,12 @@ class ReframeStage(Stage):
                     # Jalur baru: YOLO track + kamera halus mengikuti pembicara.
                     # Gagal → fallback render_split_screen (crop statis + zoom).
                     clip_no = f"{idx}/{total_clips}"
-                    if not _render_tracked(clip, camera_path, reframed_path, fps, clip_no):
+                    if not _render_tracked(clip, camera_path, reframed_path, fps, clip_no, config=config):
                         render_split_screen(clip, camera_path, regions, reframed_path)
                 else:
                     # single_shot: coba kamera follow orang dulu, fallback center crop
                     clip_no = f"{idx}/{total_clips}"
-                    if not _render_tracked(clip, [], reframed_path, fps, clip_no):
+                    if not _render_tracked(clip, [], reframed_path, fps, clip_no, config=config):
                         render_center_crop(clip, reframed_path)
                 reframed_count += 1
             except Exception as e:
@@ -122,7 +122,7 @@ class ReframeStage(Stage):
         )
 
 
-def _render_tracked(clip, camera_path, reframed_path, fps, clip_no: str = "") -> bool:
+def _render_tracked(clip, camera_path, reframed_path, fps, clip_no: str = "", config=None) -> bool:
     """Render kamera halus (YOLO track + EMA pan/zoom). False = gagal → fallback."""
     try:
         from stages.reframe.tracker import assign_zones, track_persons
@@ -133,7 +133,22 @@ def _render_tracked(clip, camera_path, reframed_path, fps, clip_no: str = "") ->
         zone_map = assign_zones(boxes)
         if not zone_map:
             return False
-        return render_tracked(clip, camera_path, boxes, zone_map, fps, reframed_path, clip_no=clip_no)
+        cfg = {}
+        if config is not None:
+            cfg = {
+                "smooth_alpha": getattr(config, "reframe_smooth_alpha", 0.12),
+                "target_alpha": getattr(config, "reframe_target_alpha", 0.35),
+                "deadband": getattr(config, "reframe_deadband", 0.006),
+                "hold_sec": getattr(config, "reframe_hold_sec", 0.5),
+                "head_bias": getattr(config, "reframe_head_bias", 0.30),
+                "zoom_fit": getattr(config, "reframe_zoom_fit", 0.6),
+                "zoom_min": getattr(config, "reframe_zoom_min", 1.15),
+                "zoom_max": getattr(config, "reframe_zoom_max", 2.0),
+                "zoom_idle": getattr(config, "reframe_zoom_idle", 1.05),
+                "zoom_ease": getattr(config, "reframe_zoom_ease", 0.06),
+            }
+        return render_tracked(clip, camera_path, boxes, zone_map, fps, reframed_path,
+                              clip_no=clip_no, **cfg)
     except Exception as e:
         logger.warning("render_tracked_fallback", error=str(e), clip=clip.name)
         return False

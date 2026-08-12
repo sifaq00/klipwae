@@ -16,6 +16,16 @@ class Settings(BaseSettings):
     chunk_duration_min: int = 20
     chunk_overlap_min: int = 2
     clip_align_sentence: bool = True
+    reframe_zoom_min: float = 1.15
+    reframe_zoom_max: float = 2.0
+    reframe_zoom_fit: float = 0.6
+    reframe_head_bias: float = 0.30
+    reframe_smooth_alpha: float = 0.12
+    reframe_target_alpha: float = 0.35
+    reframe_deadband: float = 0.006
+    reframe_hold_sec: float = 0.5
+    reframe_zoom_idle: float = 1.05
+    reframe_zoom_ease: float = 0.06
     log_level: str = "INFO"
     hf_token: str | None = None
 

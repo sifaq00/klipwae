@@ -398,10 +398,19 @@ async def get_segments(job_id: str):
         db.close()
 
 
+def _resolve_clip_path(clip_path: str) -> Path:
+    """clip_path di DB relatif terhadap backend dir — normalisasi ke absolut
+    supaya cek file & relative_to(DATA_DIR) konsisten."""
+    clip = Path(clip_path)
+    if not clip.is_absolute():
+        clip = Path(__file__).parent / clip
+    return clip
+
+
 def _segment_json(seg: dict) -> dict:
     clip_path = seg.get("clip_path")
     if clip_path:
-        clip = Path(clip_path)
+        clip = _resolve_clip_path(clip_path)
         reframed = clip.with_name(clip.stem + "_reframed.mp4")
         final = DATA_DIR / "clips_final" / clip.name
         if final.exists():
@@ -452,7 +461,7 @@ def _segment_files(seg: dict) -> list[Path]:
     files = []
     clip_path = seg.get("clip_path")
     if clip_path:
-        clip = Path(clip_path)
+        clip = _resolve_clip_path(clip_path)
         files.append(clip)
         files.append(clip.with_name(clip.stem + "_reframed.mp4"))
         files.append(Path(__file__).parent / "data" / "clips_final" / clip.name)

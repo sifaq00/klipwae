@@ -79,7 +79,7 @@ function JobCard({ job, index, active, onOpen, onDelete }: { job: Job; index: nu
 
   return (
     <div
-      className={`glass card-hover animate-fadeUp cursor-pointer p-3.5 sm:p-4 ${active ? "border-accent/50" : ""}`}
+      className={`glass card-hover animate-fadeUp cursor-pointer p-3 sm:p-3.5 ${active ? "border-accent/50" : ""}`}
       style={{ animationDelay: `${index * 50}ms` }}
       onClick={onOpen}
     >
@@ -88,19 +88,16 @@ function JobCard({ job, index, active, onOpen, onDelete }: { job: Job; index: nu
           src={`https://i.ytimg.com/vi/${job.id}/mqdefault.jpg`}
           alt=""
           loading="lazy"
-          className="h-20 w-32 shrink-0 rounded-xl object-cover"
+          className="h-16 w-28 sm:h-[72px] sm:w-32 shrink-0 rounded-xl object-cover"
           onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
         />
-        <div className="min-w-0 flex-1 flex flex-col justify-between self-stretch py-0.5">
-          <div className="flex items-center gap-x-2.5">
-            <h3 className="font-display truncate text-[14.5px] font-semibold text-slate-100 flex-1">
+        <div className="min-w-0 flex-1 space-y-1.5">
+          <div className="flex items-center justify-between gap-2">
+            <h3 className="font-display truncate text-[14px] sm:text-[14.5px] font-semibold text-slate-100">
               {job.title || `Episode ${job.id}`}
             </h3>
-            {job.channel && (
-              <span className="hidden sm:inline text-xs text-slate-500 truncate max-w-[140px]">· {job.channel}</span>
-            )}
             <button
-              className="ml-auto shrink-0 rounded px-1.5 py-0.5 text-[11px] text-slate-600 transition-colors hover:bg-red-900/40 hover:text-red-400"
+              className="shrink-0 rounded px-1.5 py-0.5 text-[11px] text-slate-600 transition-colors hover:bg-red-900/40 hover:text-red-400"
               title="Hapus episode + semua file"
               onClick={(e) => { e.stopPropagation(); onDelete(); }}
             >
@@ -109,7 +106,13 @@ function JobCard({ job, index, active, onOpen, onDelete }: { job: Job; index: nu
           </div>
 
           <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-xs text-slate-500">
-            <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex items-center gap-2 flex-wrap min-w-0">
+              {job.channel && (
+                <>
+                  <span className="text-slate-300 font-medium truncate max-w-[180px]">{job.channel}</span>
+                  <span className="text-slate-600">·</span>
+                </>
+              )}
               <span className="font-mono">{job.id}</span>
               <span>· {fmtDate(job.created_at)}</span>
               <span>· {fmtDuration(job.duration_sec)}</span>
@@ -123,7 +126,7 @@ function JobCard({ job, index, active, onOpen, onDelete }: { job: Job; index: nu
               )}
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 shrink-0">
               {job.running && (
                 <span className="font-mono text-cyan-300 font-medium text-[11px] flex items-center gap-1">
                   <span className="h-1.5 w-1.5 rounded-full bg-cyan-400 animate-pulseGlow" />
@@ -138,7 +141,7 @@ function JobCard({ job, index, active, onOpen, onDelete }: { job: Job; index: nu
           </div>
 
           {/* ── 6-Segment Pipeline Progress Rail ── */}
-          <div className="flex h-1.5 w-full gap-1.5">
+          <div className="flex h-1.5 w-full gap-1.5 pt-0.5">
             {STAGES.map((s, i) => {
               const isPassed = job.status === "done" || (stageIdx >= 0 && i < stageIdx);
               const isCurrent = job.running && (stageIdx === i || (stageIdx < 0 && i === 0));

@@ -35,6 +35,36 @@ def test_clip_window_uses_actual_offsets():
     print("OK test_clip_window_uses_actual_offsets")
 
 
+def test_clip_window_backfills_from_file_duration(tmp_path):
+    """Row lama (null) + file ada: hitung offset PRESISI dari durasi file.
+    durasi - range = buf_total - tahu first/last (3.0) vs tengah (0.6)."""
+    from unittest.mock import patch
+
+    # Klip tengah: range 20s, durasi file 20.6 - buf_total 0.6 - start buf 0.3
+    mid = tmp_path / "mid.mp4"
+    mid.write_bytes(b"x")
+    row_mid = {"start_time": "00:01:00", "end_time": "00:01:20",
+               "clip_path": str(mid)}
+    with patch("utils.video_info.get_video_info", return_value=(30.0, 20.6)):
+        s, e = _clip_window(row_mid)
+    assert abs(s - 59.7) < 1e-6 and abs(e - 80.3) < 1e-6, f"middle klip: got ({s}, {e})"
+
+    # Klip pertama/terakhir: range 20s, durasi 23.0 - buf_total 3.0 - 1.5
+    edge = tmp_path / "edge.mp4"
+    edge.write_bytes(b"x")
+    row_edge = {"start_time": "00:01:00", "end_time": "00:01:20",
+                "clip_path": str(edge)}
+    with patch("utils.video_info.get_video_info", return_value=(30.0, 23.0)):
+        s, e = _clip_window(row_edge)
+    assert abs(s - 58.5) < 1e-6 and abs(e - 81.5) < 1e-6, f"edge klip: got ({s}, {e})"
+
+    # File tak ada - fallback tebakan lama
+    nofile = {"start_time": "00:01:00", "end_time": "00:01:20"}
+    s, e = _clip_window(nofile)
+    assert (s, e) == (58.5, 81.5), f"fallback: got ({s}, {e})"
+    print("OK test_clip_window_backfills_from_file_duration")
+
+
 def _cfg(**over):
     cfg = {
         "font": "Arial", "size": 80, "bold": True, "italic": False,

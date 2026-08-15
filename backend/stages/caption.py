@@ -244,8 +244,25 @@ def _clip_window(row: dict) -> tuple[float, float]:
     e = row.get("clip_end_sec")
     if s is not None and e is not None:
         return float(s), float(e)
-    # Row lama (belum migrasi): fallback tebakan lama
-    return hms_to_sec(row["start_time"]) - CLIP_BUFFER_SEC, hms_to_sec(row["end_time"]) + CLIP_BUFFER_SEC
+    # Row lama (sebelum kolom ada): backfill PRESISI dari durasi file.
+    # durasi − range = buf_total; clip.py pakai buf 1.5 (first/last) atau
+    # 0.3 (tengah) di KEDUA ujung → total 3.0 atau 0.6. Presisi penuh,
+    # bukan tebakan buta.
+    r_start = hms_to_sec(row["start_time"])
+    r_end = hms_to_sec(row["end_time"])
+    clip_path = row.get("clip_path") or ""
+    if clip_path:
+        try:
+            from utils.video_info import get_video_info
+            _, dur = get_video_info(Path(clip_path))
+            if dur and dur > 0:
+                total_buf = max(0.0, dur - (r_end - r_start))
+                buf_start = 1.5 if total_buf >= 2.5 else 0.3
+                return r_start - buf_start, r_end + (total_buf - buf_start)
+        except Exception:
+            pass
+    # File tak ada (klip dibuang?) → tebakan lama
+    return r_start - CLIP_BUFFER_SEC, r_end + CLIP_BUFFER_SEC
 
 
 @register

@@ -27,7 +27,16 @@ class IngestStage(Stage):
         # Kalau hanya cek file, proses yang mati setelah download selesai
         # tapi sebelum metadata ke-commit akan skip stage di resume,
         # dan stage downstream (clip) dapat duration_sec=None.
-        if not Path(f"data/raw/{job_id}.mp4").exists():
+        raw = Path(f"data/raw/{job_id}.mp4")
+        if not raw.exists():
+            return False
+        # Floor 1MB: metadata BISA muncul duluan dari early-fetch (POST),
+        # jadi kehadiran metadata bukan lagi bukti download sukses.
+        # File parsial yang nyangkut di bawah ambang ini dianggap belum
+        # selesai → retry re-download.
+        # ponytail: window parsial >1MB (kill pas ffmpeg merge) masih lolos —
+        # sempit (hanya fase merge, .part tak match path ini), terima.
+        if raw.stat().st_size < 1024 * 1024:
             return False
         if db is None:
             return True
@@ -71,6 +80,7 @@ class IngestStage(Stage):
 
             proc = subprocess.Popen([
                 "yt-dlp",
+                "--no-playlist",
                 "-f", f"bestvideo[height<={config.video_download_resolution}]+bestaudio/best[height<={config.video_download_resolution}]",
                 "--merge-output-format", "mp4",
                 "--newline",
@@ -92,7 +102,7 @@ class IngestStage(Stage):
             if proc.returncode != 0:
                 return StageResult(status=StageStatus.FAILED, error="yt-dlp download failed")
 
-        metadata = get_yt_metadata(url)
+        metadata = get_yt_metadata(url, timeout=600)
         if not metadata or metadata.get("title") is None or metadata.get("duration") is None:
             # Gagal ambil metadata — jangan mark done, supaya is_complete
             # (yang cek DB row lengkap) tidak true. File mp4 sudah ada,
@@ -111,13 +121,20 @@ class IngestStage(Stage):
         return StageResult(status=StageStatus.DONE, output_path=str(output_path))
 
 
-def subprocess_run(args: list[str]) -> subprocess.CompletedProcess:
-    return subprocess.run(args, capture_output=True, text=True, timeout=600)
+def subprocess_run(args: list[str], timeout: int = 600) -> subprocess.CompletedProcess:
+    # utf-8 + errors=replace: judul non-ASCII (mojibake) di Windows default cp1252
+    return subprocess.run(args, capture_output=True, text=True, encoding="utf-8",
+                          errors="replace", timeout=timeout)
 
 
-def get_yt_metadata(url: str) -> Optional[dict]:
+def get_yt_metadata(url: str, timeout: int = 30) -> Optional[dict]:
+    """Metadata YouTube tanpa download — dipakai POST /api/jobs (cepat, UI
+    langsung tampil judul/channel) DAN ingest setelah download (fallback)."""
     try:
-        result = subprocess_run(["yt-dlp", "--dump-json", url])
+        result = subprocess_run(
+            ["yt-dlp", "--dump-json", "--no-playlist", "--skip-download", url],
+            timeout=timeout,
+        )
         if result.returncode != 0:
             return None
         data = json.loads(result.stdout)

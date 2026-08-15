@@ -89,10 +89,9 @@ export default function App() {
   return (
     <div className="mx-auto max-w-6xl px-4 pb-16 pt-6 sm:pt-10">
       <header className="mb-8 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="group relative flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-accent/40 bg-slate-950 shadow-lg shadow-accent/20 transition-transform duration-200 hover:scale-105">
-            <img src="/logo.jpg" alt="Klipwae Studio Logo" className="h-full w-full object-cover" />
-            <div className="absolute -inset-1 -z-10 rounded-xl bg-accent/30 blur-md" />
+        <div className="flex items-center gap-3.5">
+          <div className="group relative flex shrink-0 items-center justify-center transition-transform duration-200 hover:scale-105">
+            <img src="/logo.png" alt="Klipwae Studio Logo" className="h-10 w-10 sm:h-11 sm:w-11 object-contain drop-shadow-[0_0_14px_rgba(0,242,254,0.45)]" />
           </div>
           <div>
             <h1 className="font-display text-xl font-bold tracking-tight">

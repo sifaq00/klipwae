@@ -15,12 +15,14 @@ export function ScraperPage({ onAdded, onBack, showToast }: Props) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [adding, setAdding] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [searched, setSearched] = useState(false);
   const [podcastOnly, setPodcastOnly] = useState(true);
 
   const handleSearch = async () => {
     if (!query.trim()) return;
     setBusy(true);
     setError(null);
+    setSearched(true);
     try {
       const res = await scrape(query.trim(), podcastOnly ? 900 : 0);
       setItems(res.items);
@@ -170,7 +172,7 @@ export function ScraperPage({ onAdded, onBack, showToast }: Props) {
       )}
       {!busy && items.length === 0 && !error && (
         <div className="glass animate-fadeUp py-14 text-center text-sm text-slate-500">
-          Ketik deskripsi video yang dicari di atas, lalu tekan Cari.
+          {searched ? "Tidak ada hasil yang cocok - coba kata kunci yang lebih umum." : "Ketik deskripsi video yang dicari di atas, lalu tekan Cari."}
         </div>
       )}
     </div>

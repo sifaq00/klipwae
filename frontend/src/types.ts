@@ -1,4 +1,4 @@
-export interface ScrapeItem {
+﻿export interface ScrapeItem {
   id: string;
   url: string;
   title: string;
@@ -7,7 +7,8 @@ export interface ScrapeItem {
   score?: number;
 }
 
-export interface Job {  id: string;
+export interface Job {
+  id: string;
   url: string;
   title: string | null;
   channel: string | null;

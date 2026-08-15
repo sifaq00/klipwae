@@ -1,10 +1,10 @@
-﻿# Klipwae Studio
+# Klipwae Studio
 
-Turn YouTube podcast episodes into ready-to-post product clips â€” automatically.
+Turn YouTube podcast episodes into ready-to-post product clips — automatically.
 
 Paste a podcast URL, and Klipwae downloads the episode, transcribes it, detects
 product mentions (health / fitness / beauty / food / gadgets), and cuts vertical
-9:16 clips with karaoke-style burned-in subtitles â€” ready for TikTok's product
+9:16 clips with karaoke-style burned-in subtitles — ready for TikTok's product
 cart.
 
 ![Pipeline](https://img.shields.io/badge/pipeline-download%20%E2%86%92%20transcribe%20%E2%86%92%20analyze%20%E2%86%92%20clip%20%E2%86%92%20reframe%20%E2%86%92%20caption-teal)
@@ -31,66 +31,66 @@ cart.
 
 ```
 YouTube URL
-   â”‚
-   â–¼
-â‘  Download      yt-dlp (720p default, bestvideo+bestaudio, merged)
-   â”‚
-   â–¼
-â‘¡ Transcribe    faster-whisper (large-v3-turbo default, CUDA/CPU, word-level timestamps)
-   â”‚
-   â–¼
-â‘¢ Analyze       Gemini â€” detects product-mention segments from the transcript
-   â”‚              (health/fitness/beauty focus, confidence-scored, viral hook scoring,
-   â”‚               affiliate caption + hashtags per segment)
-   â–¼
-â‘£ Clip          ffmpeg â€” splits segments into 30â€“60s chunks aligned to sentence breaks
-   â”‚
-   â–¼
-â‘¤ Reframe       vertical 9:16 with cinematic camera tracking:
-   â”‚              - layout detection (single / multi-speaker)
-   â”‚              - YOLO11n + ByteTrack person tracking
-   â”‚              - speaker-activity awareness + rapid-turn smoothing
-   â”‚              - adaptive headroom, deadband + EMA smoothing
-   â–¼
-â‘¥ Subtitle      karaoke word-by-word burn-in (libass) with viral font pack,
+   │
+   ▼
+① Download      yt-dlp (720p default, bestvideo+bestaudio, merged)
+   │
+   ▼
+② Transcribe    faster-whisper (large-v3-turbo default, CUDA/CPU, word-level timestamps)
+   │
+   ▼
+③ Analyze       Gemini — detects product-mention segments from the transcript
+   │              (health/fitness/beauty focus, confidence-scored, viral hook scoring,
+   │               affiliate caption + hashtags per segment)
+   ▼
+④ Clip          ffmpeg — splits segments into 30–60s chunks aligned to sentence breaks
+   │
+   ▼
+⑤ Reframe       vertical 9:16 with cinematic camera tracking:
+   │              - layout detection (single / multi-speaker)
+   │              - YOLO11n + ByteTrack person tracking
+   │              - speaker-activity awareness + rapid-turn smoothing
+   │              - adaptive headroom, deadband + EMA smoothing
+   ▼
+⑥ Subtitle      karaoke word-by-word burn-in (libass) with viral font pack,
                   kinetic animations, auto-emoji injection
-   â”‚
-   â–¼
-âœ… Clips ready   review / mark reviewed / reject / copy caption+hashtags / post
+   │
+   ▼
+✅ Clips ready   review / mark reviewed / reject / copy caption+hashtags / post
 ```
 
 ## Features
 
 ### Product detection
-- **Niche presets** â€” Affiliate (products), Podcast & Debate, Comedy, Education,
-  Storytelling â€” each with its own tuned analysis prompt
-- **Health/fitness/beauty focus** â€” supplements, fitness equipment, skincare,
+- **Niche presets** — Affiliate (products), Podcast & Debate, Comedy, Education,
+  Storytelling — each with its own tuned analysis prompt
+- **Health/fitness/beauty focus** — supplements, fitness equipment, skincare,
   bodycare; generic terms without a brand are rejected, deep discussion without
   a brand is kept
-- **Per-segment metadata** â€” product name, topic, confidence, reason,
+- **Per-segment metadata** — product name, topic, confidence, reason,
   viral-hook score, affiliate caption + hashtags (ready to paste)
-- **Non-fatal notice** â€” episodes with zero product segments show a clear notice
+- **Non-fatal notice** — episodes with zero product segments show a clear notice
   instead of failing silently
 
 ### Video production
-- **Cinematic reframing** â€” smart crop to 9:16 with face tracking, speaker
+- **Cinematic reframing** — smart crop to 9:16 with face tracking, speaker
   zones, push-in zoom, deadband + EMA smoothing (no jitter)
-- **Viral subtitles** â€” karaoke highlight, pop/bounce animations, auto-emoji
+- **Viral subtitles** — karaoke highlight, pop/bounce animations, auto-emoji
   injection, 6 bundled open-source fonts (OFL), live style preview rendered by
   the same libass engine used for burn-in
-- **Style presets per job** â€” re-burn captions non-blocking with live progress
+- **Style presets per job** — re-burn captions non-blocking with live progress
 
 ### Operations
-- **Parallel jobs** â€” up to `MAX_CONCURRENT_JOBS` episodes run simultaneously
+- **Parallel jobs** — up to `MAX_CONCURRENT_JOBS` episodes run simultaneously
   (per-thread stdout routing, GPU memory cleanup, kill-aware pipelines)
-- **Kill / retry / reprocess** â€” stop mid-flight (kills ffmpeg/whisper
+- **Kill / retry / reprocess** — stop mid-flight (kills ffmpeg/whisper
   properly), retry only repairs missing work; raw video is kept until retention
   so reprocess skips re-downloading
-- **Live SSE log stream** â€” real-time pipeline log with auto-reconnect and
+- **Live SSE log stream** — real-time pipeline log with auto-reconnect and
   absolute cursor (no duplicate lines across retries)
-- **Retention cleanup** â€” stale raw files and tracks purged at startup and on
+- **Retention cleanup** — stale raw files and tracks purged at startup and on
   schedule (`STORAGE_RETENTION_DAYS`)
-- **Instant metadata** â€” title, channel and duration appear seconds after
+- **Instant metadata** — title, channel and duration appear seconds after
   pasting a URL (yt-dlp metadata fetch runs parallel to the download)
 
 ## Architecture
@@ -120,24 +120,24 @@ thread so kill requests terminate the right process.
 | Node.js | **18+** (tested on 20/22) | Frontend (Vite 5) |
 | ffmpeg + ffprobe | **8.1+** (any recent 6.x also works) | All audio/video processing |
 | yt-dlp | latest (2025+) | YouTube download |
-| Deno | latest (2.x) | **Required by modern yt-dlp** for YouTube JS challenge/signature â€” without it downloads fail with `403 Forbidden` |
-| Google Gemini API key | â€” | Transcript analysis (only paid requirement) |
+| Deno | latest (2.x) | **Required by modern yt-dlp** for YouTube JS challenge/signature — without it downloads fail with `403 Forbidden` |
+| Google Gemini API key | — | Transcript analysis (only paid requirement) |
 
 ### Optional: NVIDIA GPU (strongly recommended)
 
-- **NVIDIA GPU** with at least **4 GB VRAM** (6â€“8 GB comfortable)
+- **NVIDIA GPU** with at least **4 GB VRAM** (6–8 GB comfortable)
 - **CUDA 12.x** drivers (any recent driver bundle works; you don't need the CUDA
-  Toolkit installed separately â€” pip wheels bundle the runtime)
-- **NVIDIA cuDNN 9** â€” required by faster-whisper's CTranslate2
+  Toolkit installed separately — pip wheels bundle the runtime)
+- **NVIDIA cuDNN 9** — required by faster-whisper's CTranslate2
   (`pip install nvidia-cudnn-cu12` below handles it)
 
-With GPU: transcription ~10Ã— faster, YOLO person tracking runs on CUDA, and
+With GPU: transcription ~10× faster, YOLO person tracking runs on CUDA, and
 final render uses NVENC (h264_nvenc). Without GPU everything still works on CPU
-(just slower) â€” `WHISPER_DEVICE=cpu`.
+(just slower) — `WHISPER_DEVICE=cpu`.
 
 ## Installation
 
-### Step 1 â€” Install Python 3.11+
+### Step 1 — Install Python 3.11+
 
 **Windows**
 
@@ -156,7 +156,7 @@ sudo apt install python3.11 python3.11-venv python3-pip
 brew install python@3.11
 ```
 
-### Step 2 â€” Install ffmpeg, yt-dlp, Deno
+### Step 2 — Install ffmpeg, yt-dlp, Deno
 
 **Windows** (winget):
 ```bat
@@ -183,7 +183,7 @@ yt-dlp --version
 deno --version
 ```
 
-### Step 3 â€” Backend (Python venv)
+### Step 3 — Backend (Python venv)
 
 ```bash
 cd backend
@@ -223,16 +223,16 @@ pip install -e .
    Both should print `True`.
 
 > **No GPU?** Do nothing here. Set `WHISPER_DEVICE=cpu` in `.env` (step 5).
-> The reframe stage still works â€” YOLO falls back to CPU, encoding uses libx264.
+> The reframe stage still works — YOLO falls back to CPU, encoding uses libx264.
 
-### Step 4 â€” Frontend
+### Step 4 — Frontend
 
 ```bash
 cd frontend
 npm install
 ```
 
-### Step 5 â€” Environment file
+### Step 5 — Environment file
 
 ```bash
 cd backend
@@ -243,12 +243,12 @@ copy .env.example .env          # Windows
 Then edit `.env`:
 
 ```ini
-GOOGLE_API_KEY=your_key_here     # REQUIRED â€” get one at https://aistudio.google.com/apikey
+GOOGLE_API_KEY=your_key_here     # REQUIRED — get one at https://aistudio.google.com/apikey
 WHISPER_DEVICE=cuda              # change to cpu if no GPU
 MAX_CONCURRENT_JOBS=2            # set 1 if 2 transcriptions OOM your GPU
 ```
 
-### Step 6 â€” Smoke test
+### Step 6 — Smoke test
 
 ```bash
 cd backend
@@ -267,7 +267,7 @@ list with comments).
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `GOOGLE_API_KEY` | â€” | **Required.** Gemini key for transcript analysis |
+| `GOOGLE_API_KEY` | — | **Required.** Gemini key for transcript analysis |
 | `ANALYZE_MODEL` / `ANALYZE_MODEL_FALLBACK` | `gemini-flash-latest` / `gemini-3.6-flash` | Gemini model + auto-fallback saat kuota 429 (free-tier 20 req/hari per model) |
 | `WHISPER_MODEL` | `large-v3-turbo` | Whisper model (local dir `models/` wins if present) |
 | `WHISPER_DEVICE` | `cuda` | `cuda` or `cpu` |
@@ -295,11 +295,11 @@ the browser. It skips components that are already running.
 ### Manually
 
 ```bash
-# Terminal 1 â€” backend
+# Terminal 1 — backend
 cd backend
 .venv\Scripts\python.exe -m uvicorn server:app --port 8180 --reload
 
-# Terminal 2 â€” frontend
+# Terminal 2 — frontend
 cd frontend
 npm run dev
 ```
@@ -308,13 +308,13 @@ Open http://localhost:5173
 
 ### Usage flow
 
-1. **Paste a YouTube URL** â€” title & thumbnail appear instantly
+1. **Paste a YouTube URL** — title & thumbnail appear instantly
 2. Pick a **niche preset** (default: Affiliate)
-3. Click **Bikin Klip** â€” watch the live pipeline log
-4. When done, open the episode â†’ review clips â†’ mark Reviewed/Posted,
+3. Click **Bikin Klip** — watch the live pipeline log
+4. When done, open the episode → review clips → mark Reviewed/Posted,
    copy affiliate caption + hashtags, or reject (deletes the files)
-5. **Gaya subtitle** â€” tweak font/style, preview live, re-burn non-blocking
-6. **Hapus episode** â€” kills running work, deletes DB rows + all files
+5. **Gaya subtitle** — tweak font/style, preview live, re-burn non-blocking
+6. **Hapus episode** — kills running work, deletes DB rows + all files
 
 ## API Reference
 
@@ -323,7 +323,7 @@ Base URL: `http://localhost:8180`
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/api/health` | Health check |
-| POST | `/api/jobs` | Create job `{url, preset?}` â†’ `{job_id, status}` |
+| POST | `/api/jobs` | Create job `{url, preset?}` → `{job_id, status}` |
 | GET | `/api/jobs` | List jobs (`?limit=&offset=`, paginated, max 200) |
 | GET | `/api/jobs/{id}` | Job detail (incl. `running`, stages, notice) |
 | DELETE | `/api/jobs/{id}` | Kill + delete DB rows + all files (non-blocking joins) |
@@ -346,38 +346,38 @@ Base URL: `http://localhost:8180`
 
 ```
 auto-clipper-app/
-â”œâ”€â”€ start.bat                  # One-click launcher (Windows)
-â”œâ”€â”€ backend/
-â”‚   â”œâ”€â”€ server.py              # FastAPI app, SSE, job runner, reburn
-â”‚   â”œâ”€â”€ orchestrator.py        # Pipeline orchestration, retries, kill handling
-â”‚   â”œâ”€â”€ runtime.py             # Per-thread stop events + subprocess registry
-â”‚   â”œâ”€â”€ config.py              # Pydantic settings (.env)
-â”‚   â”œâ”€â”€ db/
-â”‚   â”‚   â”œâ”€â”€ schema.sql         # Tables + performance indexes
-â”‚   â”‚   â””â”€â”€ jobs.py            # JobDB, idempotent migrations
-â”‚   â”œâ”€â”€ stages/
-â”‚   â”‚   â”œâ”€â”€ ingest.py          # yt-dlp download + metadata
-â”‚   â”‚   â”œâ”€â”€ transcribe.py      # faster-whisper + model cache
-â”‚   â”‚   â”œâ”€â”€ analyze.py         # Gemini chunked analysis + cost tracking
-â”‚   â”‚   â”œâ”€â”€ clip.py            # Sentence-aligned ffmpeg cuts
-â”‚   â”‚   â”œâ”€â”€ reframe/           # Layout detect, tracker, camera path, render
-â”‚   â”‚   â””â”€â”€ caption.py         # Karaoke ASS generation + libass burn-in
-â”‚   â”œâ”€â”€ utils/
-â”‚   â”‚   â”œâ”€â”€ ffmpeg_helpers.py  # run_ffmpeg, video_encode_args (NVENC/CPU)
-â”‚   â”‚   â”œâ”€â”€ video_info.py      # ffprobe wrapper
-â”‚   â”‚   â”œâ”€â”€ caption_style.py   # Style defaults, font map (OFL)
-â”‚   â”‚   â””â”€â”€ gpu_cleanup.py     # Torch/whisper memory release
-â”‚   â”œâ”€â”€ prompts/               # Preset prompts (affiliate, podcast, â€¦)
-â”‚   â”œâ”€â”€ assets/fonts + fonts/  # Bundled OFL fonts
-â”‚   â”œâ”€â”€ tests/                 # 166 tests (pytest)
-â”‚   â””â”€â”€ .env.example
-â”œâ”€â”€ frontend/
-â”‚   â”œâ”€â”€ src/
-â”‚   â”‚   â”œâ”€â”€ App.tsx            # Shell: polling, job creation, layout
-â”‚   â”‚   â”œâ”€â”€ components/        # JobsView, JobDetail, SegmentCard, StyleEditorâ€¦
-â”‚   â”‚   â”œâ”€â”€ lib/               # API client, stages, clipboard, caption defaults
-â”‚   â”‚   â””â”€â”€ main.tsx           # Entry + ErrorBoundary
-â”‚   â””â”€â”€ package.json
+├── start.bat                  # One-click launcher (Windows)
+├── backend/
+│   ├── server.py              # FastAPI app, SSE, job runner, reburn
+│   ├── orchestrator.py        # Pipeline orchestration, retries, kill handling
+│   ├── runtime.py             # Per-thread stop events + subprocess registry
+│   ├── config.py              # Pydantic settings (.env)
+│   ├── db/
+│   │   ├── schema.sql         # Tables + performance indexes
+│   │   └── jobs.py            # JobDB, idempotent migrations
+│   ├── stages/
+│   │   ├── ingest.py          # yt-dlp download + metadata
+│   │   ├── transcribe.py      # faster-whisper + model cache
+│   │   ├── analyze.py         # Gemini chunked analysis + cost tracking
+│   │   ├── clip.py            # Sentence-aligned ffmpeg cuts
+│   │   ├── reframe/           # Layout detect, tracker, camera path, render
+│   │   └── caption.py         # Karaoke ASS generation + libass burn-in
+│   ├── utils/
+│   │   ├── ffmpeg_helpers.py  # run_ffmpeg, video_encode_args (NVENC/CPU)
+│   │   ├── video_info.py      # ffprobe wrapper
+│   │   ├── caption_style.py   # Style defaults, font map (OFL)
+│   │   └── gpu_cleanup.py     # Torch/whisper memory release
+│   ├── prompts/               # Preset prompts (affiliate, podcast, …)
+│   ├── assets/fonts + fonts/  # Bundled OFL fonts
+│   ├── tests/                 # 166 tests (pytest)
+│   └── .env.example
+├── frontend/
+│   ├── src/
+│   │   ├── App.tsx            # Shell: polling, job creation, layout
+│   │   ├── components/        # JobsView, JobDetail, SegmentCard, StyleEditor…
+│   │   ├── lib/               # API client, stages, clipboard, caption defaults
+│   │   └── main.tsx           # Entry + ErrorBoundary
+│   └── package.json
 ```
 
 ## Testing
@@ -401,15 +401,15 @@ camera path, golden transcript fixtures.
 | Symptom | Cause / Fix |
 |---------|-------------|
 | Download fails with `403 Forbidden` / JS challenge | Deno missing. Install: `winget install DenoLand.Deno`, then restart the backend |
-| Studio is empty after creating a job | Backend not restarted since a code change â€” uvicorn `--reload` handles this; check `data/jobs.db` |
-| Progress bar stuck at 0% | Old frontend cache â€” hard refresh (Ctrl+Shift+R); bar maps backend status â†’ stage |
+| Studio is empty after creating a job | Backend not restarted since a code change — uvicorn `--reload` handles this; check `data/jobs.db` |
+| Progress bar stuck at 0% | Old frontend cache — hard refresh (Ctrl+Shift+R); bar maps backend status → stage |
 | Transcribe OOM with 2 jobs | Set `MAX_CONCURRENT_JOBS=1` |
 | Reburn appears to hang | It's non-blocking now: watch the toast + per-clip progress; status endpoint `/reburn-status` |
-| Clips look green in Chrome | ffmpeg NVENC + rawvideo colorspace bug â€” handled automatically (forced yuv420p + BT.601 tags) |
-| No subtitles in final clip | Style has `enabled: false`, or the `.ass` was missing (now guarded â€” re-burn repairs) |
+| Clips look green in Chrome | ffmpeg NVENC + rawvideo colorspace bug — handled automatically (forced yuv420p + BT.601 tags) |
+| No subtitles in final clip | Style has `enabled: false`, or the `.ass` was missing (now guarded — re-burn repairs) |
 | Windows: port already in use | `start.bat` refuses and suggests a different port |
 
 ## License
 
 Private project. Bundled fonts are SIL Open Font License; `yolo11n.pt` is AGPL
-(Ultralytics) â€” check your distribution terms.
+(Ultralytics) — check your distribution terms.

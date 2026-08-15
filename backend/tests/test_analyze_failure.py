@@ -1,5 +1,5 @@
-﻿"""Analyze failure semantics: semua chunk gagal â†’ FAILED (bukan '0 segmen'
-yang menyesatkan user â€” kasus nyata: quota Gemini 429 free-tier habis).
+"""Analyze failure semantics: semua chunk gagal → FAILED (bukan '0 segmen'
+yang menyesatkan user — kasus nyata: quota Gemini 429 free-tier habis).
 + fallback otomatis ke model cadangan saat 429."""
 import sys
 from pathlib import Path
@@ -39,7 +39,7 @@ def test_quota_error_detection():
 
 
 def test_analyze_chunk_falls_back_on_quota():
-    """Primary 429 → fallback model dipakai; non-429 → error asli di-propagate."""
+    """Primary 429 ? fallback model dipakai; non-429 ? error asli di-propagate."""
     import stages.analyze as analyze
 
     calls = []
@@ -62,7 +62,7 @@ def test_analyze_chunk_falls_back_on_quota():
 
 
 def test_analyze_chunk_chain_falls_to_last_resort():
-    """3.6 gagal (503) â†’ cadangan terakhir 3.5-flash dipakai."""
+    """3.6 gagal (503) → cadangan terakhir 3.5-flash dipakai."""
     import stages.analyze as analyze
 
     calls = []

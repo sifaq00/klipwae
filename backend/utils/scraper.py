@@ -61,13 +61,16 @@ def scrape_youtube(query: str, limit: int = 50) -> list[dict]:
     (server map ke 502).
     """
     limit = max(1, min(limit, _MAX_LIMIT))
-    result = subprocess.run(
-        ["yt-dlp", "--flat-playlist", "--no-warnings",
-         "--print", "%(id)s|%(title)s|%(channel)s|%(duration)s|%(description)s",
-         f"ytsearch{limit}:{query}"],
-        capture_output=True, text=True, encoding="utf-8", errors="replace",
-        timeout=_TIMEOUT,
-    )
+    try:
+        result = subprocess.run(
+            ["yt-dlp", "--flat-playlist", "--no-warnings",
+             "--print", "%(id)s|%(title)s|%(channel)s|%(duration)s|%(description)s",
+             f"ytsearch{limit}:{query}"],
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+            timeout=_TIMEOUT,
+        )
+    except subprocess.TimeoutExpired:
+        raise RuntimeError(f"yt-dlp search timed out (> {_TIMEOUT}s)") from None
     if result.returncode != 0:
         raise RuntimeError(f"yt-dlp search failed: {result.stderr.strip()[:300]}")
     return parse_scrape_output(result.stdout)
@@ -76,13 +79,16 @@ def scrape_youtube(query: str, limit: int = 50) -> list[dict]:
 def scrape_channel(channel_url: str, limit: int = 100) -> list[dict]:
     """List video dari channel/playlist URL (flat, metadata saja)."""
     limit = max(1, min(limit, _MAX_LIMIT))
-    result = subprocess.run(
-        ["yt-dlp", "--flat-playlist", "--no-warnings",
-         "--print", "%(id)s|%(title)s|%(channel)s|%(duration)s|%(description)s",
-         "--playlist-items", f"1-{limit}", channel_url],
-        capture_output=True, text=True, encoding="utf-8", errors="replace",
-        timeout=_TIMEOUT,
-    )
+    try:
+        result = subprocess.run(
+            ["yt-dlp", "--flat-playlist", "--no-warnings",
+             "--print", "%(id)s|%(title)s|%(channel)s|%(duration)s|%(description)s",
+             "--playlist-items", f"1-{limit}", channel_url],
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+            timeout=_TIMEOUT,
+        )
+    except subprocess.TimeoutExpired:
+        raise RuntimeError(f"yt-dlp channel scrape timed out (> {_TIMEOUT}s)") from None
     if result.returncode != 0:
         raise RuntimeError(f"yt-dlp channel scrape failed: {result.stderr.strip()[:300]}")
     return parse_scrape_output(result.stdout)

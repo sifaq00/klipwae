@@ -6,7 +6,7 @@ from types import SimpleNamespace
 import structlog
 from google import genai
 from pydantic import BaseModel, Field
-from tenacity import retry, stop_after_attempt, wait_exponential
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception
 
 from stages.base import Stage, StageResult, StageStatus
 from stages.registry import register
@@ -125,7 +125,8 @@ def _is_quota_error(e: Exception) -> bool:
     return "429" in msg or "RESOURCE_EXHAUSTED" in msg
 
 
-@retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=30))
+@retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=30),
+       retry=retry_if_exception(lambda e: not _is_quota_error(e)))
 def _analyze_chunk_retry(client, system_prompt: str, chunk_text: str, model: str) -> tuple[list[Segment], dict]:
     """Call Gemini dengan response_schema Pydantic. Return (segments, usage).
 
@@ -176,7 +177,8 @@ def analyze_chunk(client, system_prompt: str, chunk_text: str, model: str,
         raise
 
 
-@retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=30))
+@retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=30),
+       retry=retry_if_exception(lambda e: not _is_quota_error(e)))
 def _caption_batch(client, system_prompt: str, batch: list[Segment], model: str) -> dict[int, str]:
     """SATU call Gemini utk 1 batch segmen. Retry 3x via tenacity."""
     payload = [

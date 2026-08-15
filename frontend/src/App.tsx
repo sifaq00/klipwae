@@ -112,6 +112,7 @@ export default function App() {
             </p>
           </div>
         </div>
+        <div className="flex items-center gap-2">
         <button
           onClick={() => setView(view === "scraper" ? "studio" : "scraper")}
           className="chip border border-cyan-400/30 bg-cyan-400/10 text-cyan-300 transition-colors hover:border-cyan-400/60 hover:bg-cyan-400/20"
@@ -137,16 +138,7 @@ export default function App() {
             Idle
           </span>
         )}
-        <button
-          onClick={() => setView(view === "scraper" ? "studio" : "scraper")}
-          className="chip border border-cyan-400/30 bg-cyan-400/10 text-cyan-300 transition-colors hover:border-cyan-400/60 hover:bg-cyan-400/20"
-          title="Scraper YouTube â€” cari & tambah link video"
-        >
-          <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M17 10a7 7 0 11-14 0 7 7 0 0114 0z" />
-          </svg>
-          {view === "scraper" ? "Studio" : "Scraper"}
-        </button>
+        </div>
       </header>
 
       {activeJob && activeJobId ? (

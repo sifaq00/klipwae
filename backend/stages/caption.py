@@ -60,6 +60,12 @@ def _ass_header(style: dict, karaoke: bool = True) -> str:
         secondary = _hex_to_bgr(style.get("highlight_color", "#FFFF00"))
     outline_col = _hex_to_bgr(style.get("outline_color", "#000000"))
     back_col = _hex_to_bgr(style.get("shadow_color", "#000000"))
+    font_raw = str(style.get("font", "Segoe UI") or "Segoe UI").strip()
+    try:
+        from utils.caption_style import FONT_NAME_MAP
+        font_name = FONT_NAME_MAP.get(font_raw, font_raw)
+    except ImportError:
+        font_name = font_raw
     return f"""[Script Info]
 ScriptType: v4.00+
 PlayResX: 1080
@@ -67,7 +73,7 @@ PlayResY: 1920
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,{style.get('font', 'Segoe UI')},{int(style.get('size', 96) or 96)},&H00{primary},&H00{secondary},&H00{outline_col},&H00{back_col},{bold},{italic},0,0,100,100,{spacing},0,{border_style},{outline},{shadow},{alignment},40,40,{margin_v},1
+Style: Default,{font_name},{int(style.get('size', 96) or 96)},&H00{primary},&H00{secondary},&H00{outline_col},&H00{back_col},{bold},{italic},0,0,100,100,{spacing},0,{border_style},{outline},{shadow},{alignment},40,40,{margin_v},1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -330,9 +336,19 @@ class CaptionStage(Stage):
                 # biar fontsdir (font bundle) ikut ke-resolve.
                 backend_dir = Path(__file__).parent.parent
                 source_abs = source if source.is_absolute() else backend_dir / source
+
+                fonts_opt = ""
+                fonts_dir = backend_dir / "assets" / "fonts"
+                if not (fonts_dir.exists() and any(fonts_dir.iterdir())):
+                    fonts_dir = backend_dir / "fonts"
+                if fonts_dir.exists() and any(fonts_dir.iterdir()):
+                    rel_fonts = fonts_dir.relative_to(backend_dir).as_posix()
+                    fonts_opt = f":fontsdir={rel_fonts}"
+
+                ass_rel = ass_path.relative_to(backend_dir).as_posix()
                 result = run_ffmpeg([
                     "-i", str(source_abs.relative_to(backend_dir).as_posix()),
-                    "-vf", f"subtitles={ass_path.relative_to(backend_dir).as_posix()}:fontsdir=fonts",
+                    "-vf", f"subtitles={ass_rel}{fonts_opt}",
                     *video_encode_args(),
                     "-c:a", "copy",
                     str(final_path.relative_to(backend_dir).as_posix()),

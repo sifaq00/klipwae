@@ -43,6 +43,29 @@ STR_KEYS = {
     "shadow_color", "position", "border_style", "style",
 }
 
+AVAILABLE_FONTS = [
+    {"name": "Montserrat Black", "label": "Montserrat Black", "tag": "Viral TikTok", "sample": "AA"},
+    {"name": "Segoe UI Black", "label": "Segoe UI Black", "tag": "Bold Clean", "sample": "AA"},
+    {"name": "Impact", "label": "Impact", "tag": "Punchy Meme", "sample": "AA"},
+    {"name": "Arial Black", "label": "Arial Black", "tag": "Universal Heavy", "sample": "AA"},
+    {"name": "Trebuchet MS", "label": "Trebuchet MS", "tag": "Dynamic Modern", "sample": "AA"},
+    {"name": "Verdana Bold", "label": "Verdana Bold", "tag": "High Legibility", "sample": "AA"},
+]
+
+FONT_NAME_MAP = {
+    "Montserrat-Black": "Montserrat Black",
+    "Montserrat Black": "Montserrat Black",
+    "Segoe-UI-Black": "Segoe UI Black",
+    "Segoe UI Black": "Segoe UI Black",
+    "Impact": "Impact",
+    "Arial-Black": "Arial Black",
+    "Arial Black": "Arial Black",
+    "Trebuchet-MS": "Trebuchet MS",
+    "Trebuchet MS": "Trebuchet MS",
+    "Verdana-Bold": "Verdana Bold",
+    "Verdana Bold": "Verdana Bold",
+}
+
 
 def validate(style: dict) -> dict | None:
     """Coerce & validasi nilai (body parsial dianggap full default).

@@ -43,6 +43,7 @@ export function statusMeta(status: string) {
 
 export function fmtDuration(sec: number | null): string {
   if (!sec) return "";
+  if (sec < 60) return `${Math.round(sec)} dtk`;
   const h = Math.floor(sec / 3600);
   const m = Math.floor((sec % 3600) / 60);
   return h > 0 ? `${h}j ${m}m` : `${m} menit`;

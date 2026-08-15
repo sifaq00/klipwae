@@ -107,7 +107,7 @@ export function ScraperPage({ onAdded, onBack, showToast }: Props) {
             onChange={(e) => setPodcastOnly(e.target.checked)}
             className="h-3.5 w-3.5 accent-cyan-500"
           />
-          Podcast saja (= 15 menit) - filter video pendek
+          Podcast saja: hanya video dengan durasi 15 menit atau lebih (buang video pendek)
         </label>
         {error && <p className="mt-2 text-xs text-red-400">{error}</p>}
       </div>

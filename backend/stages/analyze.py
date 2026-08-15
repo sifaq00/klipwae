@@ -119,8 +119,14 @@ def analyze_failure_message(chunks_processed: int, chunk_errors: list[str], segm
     return f"Gemini API gagal di semua chunk: {joined[:200]}"
 
 
+def _is_quota_error(e: Exception) -> bool:
+    """429 / RESOURCE_EXHAUSTED = kuota model habis → layak fallback model."""
+    msg = str(e)
+    return "429" in msg or "RESOURCE_EXHAUSTED" in msg
+
+
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=30))
-def analyze_chunk(client, system_prompt: str, chunk_text: str, model: str) -> tuple[list[Segment], dict]:
+def _analyze_chunk_retry(client, system_prompt: str, chunk_text: str, model: str) -> tuple[list[Segment], dict]:
     """Call Gemini dengan response_schema Pydantic. Return (segments, usage).
 
     Exception di-propagate ke tenacity → retry 3x beneran jalan. Habis 3x,
@@ -145,6 +151,21 @@ def analyze_chunk(client, system_prompt: str, chunk_text: str, model: str) -> tu
             "output_tokens": response.usage_metadata.candidates_token_count,
         }
     return result.segments, usage
+
+
+def analyze_chunk(client, system_prompt: str, chunk_text: str, model: str,
+                  fallback_model: str | None = None) -> tuple[list[Segment], dict]:
+    """analyze_chunk + fallback otomatis: primary kena 429 (kuota harian
+    free-tier per model habis) → coba fallback_model sekali."""
+    try:
+        return _analyze_chunk_retry(client, system_prompt, chunk_text, model)
+    except Exception as e:
+        if fallback_model and _is_quota_error(e):
+            logger.warning("analyze_quota_fallback",
+                           primary=model, fallback=fallback_model,
+                           error=str(e)[:200])
+            return _analyze_chunk_retry(client, system_prompt, chunk_text, fallback_model)
+        raise
 
 
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=30))
@@ -172,20 +193,35 @@ def _caption_batch(client, system_prompt: str, batch: list[Segment], model: str)
     return {c.idx: c.caption for c in response.parsed.captions}
 
 
+def _caption_batch_with_fallback(client, system_prompt: str, batch: list[Segment], model: str,
+                                 fallback_model: str | None = None) -> dict[int, str]:
+    """_caption_batch + fallback model saat 429 (kuota primary habis)."""
+    try:
+        return _caption_batch(client, system_prompt, batch, model)
+    except Exception as e:
+        if fallback_model and _is_quota_error(e):
+            logger.warning("caption_quota_fallback",
+                           primary=model, fallback=fallback_model,
+                           error=str(e)[:200])
+            return _caption_batch(client, system_prompt, batch, fallback_model)
+        raise
+
+
 # Max segmen per call Gemini — episode panjang bisa 15-30 segmen; batch
 # besar = kalau 1 call gagal, SEMUA caption hilang. Pecah → kegagalan
 # cuma ngebunuh 1 batch (retry 3x per batch tetap jalan).
 CAPTION_BATCH_SIZE = 8
 
 
-def generate_captions(client, system_prompt: str, segments: list[Segment], model: str) -> dict[int, str]:
+def generate_captions(client, system_prompt: str, segments: list[Segment], model: str,
+                      fallback_model: str | None = None) -> dict[int, str]:
     """Generate caption TikTok per segmen, batch per 8. Kegagalan satu batch
     tidak menghapus caption batch lain (yang berhasil tetap dipakai)."""
     all_caps: dict[int, str] = {}
     for start in range(0, len(segments), CAPTION_BATCH_SIZE):
         batch = segments[start:start + CAPTION_BATCH_SIZE]
         try:
-            batch_caps = _caption_batch(client, system_prompt, batch, model)
+            batch_caps = _caption_batch_with_fallback(client, system_prompt, batch, model, fallback_model)
             for local_idx, cap in batch_caps.items():
                 all_caps[start + local_idx] = cap
         except Exception as e:
@@ -343,7 +379,10 @@ class AnalyzeStage(Stage):
             # analyze_chunk sudah retry 3x sendiri — exception di sini = beneran
             # gagal; skip chunk, JANGAN gagalkan job (plan Section 11).
             try:
-                segments, usage = analyze_chunk(client, system_prompt, chunk_text, config.analyze_model)
+                segments, usage = analyze_chunk(
+                    client, system_prompt, chunk_text, config.analyze_model,
+                    fallback_model=getattr(config, "analyze_model_fallback", "gemini-3.6-flash"),
+                )
                 return segments, usage, None
             except Exception as e:
                 err = str(e)
@@ -393,7 +432,10 @@ class AnalyzeStage(Stage):
             if caption_prompt_path.exists():
                 caption_prompt = caption_prompt_path.read_text(encoding="utf-8")
                 try:
-                    captions = generate_captions(client, caption_prompt, final, config.analyze_model)
+                    captions = generate_captions(
+                        client, caption_prompt, final, config.analyze_model,
+                        fallback_model=getattr(config, "analyze_model_fallback", "gemini-3.6-flash"),
+                    )
                 except Exception as e:
                     logger.warning("caption_generation_skipped", error=str(e))
                     captions = {}

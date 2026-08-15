@@ -1,11 +1,12 @@
 """Analyze failure semantics: semua chunk gagal → FAILED (bukan '0 segmen'
-yang menyesatkan user — kasus nyata: quota Gemini 429 free-tier habis)."""
+yang menyesatkan user — kasus nyata: quota Gemini 429 free-tier habis).
++ fallback otomatis ke model cadangan saat 429."""
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from stages.analyze import analyze_failure_message
+from stages.analyze import analyze_failure_message, _is_quota_error
 
 
 def test_partial_failure_ok():
@@ -30,9 +31,61 @@ def test_no_chunks_processed():
     assert analyze_failure_message(0, [], []) is None
 
 
+def test_quota_error_detection():
+    assert _is_quota_error(RuntimeError("429 RESOURCE_EXHAUSTED quota"))
+    assert _is_quota_error(RuntimeError("RESOURCE_EXHAUSTED: limit 20"))
+    assert not _is_quota_error(RuntimeError("ServerError 500"))
+    assert not _is_quota_error(RuntimeError("boom"))
+
+
+def test_analyze_chunk_falls_back_on_quota():
+    """Primary 429 → fallback model dipakai; non-429 → error asli di-propagate."""
+    import stages.analyze as analyze
+
+    calls = []
+
+    def fake_retry(client, sp, ct, model):
+        calls.append(model)
+        if len(calls) == 1:
+            raise RuntimeError("429 RESOURCE_EXHAUSTED quota")
+        return ([], {})
+
+    orig = analyze._analyze_chunk_retry
+    analyze._analyze_chunk_retry = fake_retry
+    try:
+        segs, _ = analyze.analyze_chunk(None, "sp", "ct", "gemini-flash-latest",
+                                        fallback_model="gemini-3.6-flash")
+    finally:
+        analyze._analyze_chunk_retry = orig
+    assert calls == ["gemini-flash-latest", "gemini-3.6-flash"], calls
+    assert segs == []
+
+
+def test_analyze_chunk_no_fallback_on_other_error():
+    import stages.analyze as analyze
+
+    def fake_retry(client, sp, ct, model):
+        raise RuntimeError("ServerError 500")
+
+    orig = analyze._analyze_chunk_retry
+    analyze._analyze_chunk_retry = fake_retry
+    try:
+        try:
+            analyze.analyze_chunk(None, "sp", "ct", "gemini-flash-latest",
+                                  fallback_model="gemini-3.6-flash")
+            assert False, "harus raise"
+        except RuntimeError as e:
+            assert "ServerError" in str(e)
+    finally:
+        analyze._analyze_chunk_retry = orig
+
+
 if __name__ == "__main__":
     test_partial_failure_ok()
     test_all_failed_generic()
     test_all_failed_quota_message()
     test_no_chunks_processed()
+    test_quota_error_detection()
+    test_analyze_chunk_falls_back_on_quota()
+    test_analyze_chunk_no_fallback_on_other_error()
     print("all ok")

@@ -161,8 +161,8 @@ def test_analyze_stage_with_mock(tmp_path: Path):
         from stages import analyze
         orig_analyze_chunk = analyze.analyze_chunk
         orig_generate_captions = analyze.generate_captions
-        analyze.analyze_chunk = lambda client, sp, ct, model: (fake_segments, {"input_tokens": 100, "output_tokens": 50})
-        analyze.generate_captions = lambda client, sp, segs, model: {0: "Hook! \n#skincare #fyp"}
+        analyze.analyze_chunk = lambda client, sp, ct, model, fallback_model=None: (fake_segments, {"input_tokens": 100, "output_tokens": 50})
+        analyze.generate_captions = lambda client, sp, segs, model, fallback_model=None: {0: "Hook! \n#skincare #fyp"}
 
         # Mock config
         from types import SimpleNamespace

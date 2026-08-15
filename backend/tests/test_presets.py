@@ -127,7 +127,7 @@ def test_analyze_stage_uses_job_preset(tmp_path, monkeypatch):
 
     captured_prompt = []
 
-    def mock_analyze_chunk(client, system_prompt, chunk_text, model):
+    def mock_analyze_chunk(client, system_prompt, chunk_text, model, fallback_model=None):
         captured_prompt.append(system_prompt)
         seg = analyze_mod.Segment(
             start="00:00:00", end="00:00:10",

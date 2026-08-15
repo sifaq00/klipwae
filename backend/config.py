@@ -7,6 +7,7 @@ class Settings(BaseSettings):
 
     google_api_key: str
     analyze_model: str = "gemini-flash-latest"
+    analyze_model_fallback: str = "gemini-3.6-flash"
     whisper_model: str = "large-v3-turbo"
     whisper_device: str = "cuda"
     whisper_initial_prompt: str = ""

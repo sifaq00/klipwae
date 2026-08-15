@@ -141,7 +141,7 @@ function JobCard({ job, index, active, onOpen, onDelete }: { job: Job; index: nu
           </div>
 
           {/* ── 6-Segment Pipeline Progress Rail ── */}
-          <div className="flex h-1.5 w-full gap-1.5 pt-0.5">
+          <div className="flex h-2.5 w-full gap-1.5 pt-1">
             {STAGES.map((s, i) => {
               const isPassed = job.status === "done" || (stageIdx >= 0 && i < stageIdx);
               const isCurrent = job.running && (stageIdx === i || (stageIdx < 0 && i === 0));
@@ -151,16 +151,24 @@ function JobCard({ job, index, active, onOpen, onDelete }: { job: Job; index: nu
                 <div
                   key={s.key}
                   title={`${s.label}: ${s.hint}`}
-                  className={`relative flex-1 rounded-full transition-all duration-500 ${
+                  className={`group/seg relative flex-1 rounded-full overflow-hidden transition-all duration-500 ${
                     isPassed
-                      ? "bg-gradient-to-r from-teal-500 to-emerald-400 shadow-[0_0_6px_rgba(20,184,166,0.3)]"
+                      ? "bg-gradient-to-r from-teal-500 via-emerald-400 to-teal-300 shadow-[0_0_10px_rgba(20,184,166,0.45)]"
                       : isCurrent
-                      ? "bg-gradient-to-r from-accent via-cyan-400 to-neon shadow-[0_0_10px_rgba(34,211,238,0.7)] animate-pulse"
+                      ? "bg-gradient-to-r from-accent via-cyan-300 to-neon shadow-[0_0_14px_rgba(34,211,238,0.85)] animate-pulseGlow"
                       : isError
-                      ? "bg-red-500/80 shadow-[0_0_6px_rgba(239,68,68,0.4)]"
-                      : "bg-raise/80 border border-edge/30"
+                      ? "bg-gradient-to-r from-rose-500 to-red-500 shadow-[0_0_10px_rgba(244,63,94,0.5)]"
+                      : "bg-raise/90 border border-edge/60 shadow-inner"
                   }`}
-                />
+                >
+                  {/* Subtle top gloss highlight for luxury glass finish */}
+                  {(isPassed || isCurrent) && (
+                    <div className="absolute inset-x-1 top-0 h-[1.5px] bg-white/40 rounded-full" />
+                  )}
+                  {isCurrent && (
+                    <div className="absolute inset-0 animated-stripes animate-barStripes opacity-40" />
+                  )}
+                </div>
               );
             })}
           </div>

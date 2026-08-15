@@ -65,7 +65,8 @@ export function streamLog(
   id: string,
   onLog: (line: string) => void,
   onDone: () => void,
-  since = 0
+  since = 0,
+  onReplayDone?: () => void
 ): EventSource {
   const es = new EventSource(`${BASE}/jobs/${id}/log?since=${since}`);
   es.addEventListener("log", (e) => onLog(e.data));
@@ -73,6 +74,7 @@ export function streamLog(
     es.close();
     onDone();
   });
+  if (onReplayDone) es.addEventListener("replay-done", () => onReplayDone());
   es.onerror = () => es.close();
   return es;
 }

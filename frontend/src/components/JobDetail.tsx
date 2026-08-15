@@ -78,6 +78,7 @@ export function JobDetail({ job, onBack, onRefresh, onRejected, onDelete, videoR
     const connect = () => {
       const logBuffer: string[] = [];
       let flushTimer: number | null = null;
+      let replaying = true; // skip progress selama replay buffer (hard refresh)
       const flushLogs = () => {
         if (logBuffer.length > 0) {
           const batch = logBuffer.splice(0);
@@ -96,6 +97,10 @@ export function JobDetail({ job, onBack, onRefresh, onRejected, onDelete, videoR
         since += 1;
         logBuffer.push(line);
         if (!flushTimer) flushTimer = window.setTimeout(flushLogs, 100);
+        // Fix glitch: baris progress LAMA dari replay (hard refresh, since=0)
+        // bikin bar menari download→transcribe→…→reframe. Baris LIVE dimulai
+        // setelah event replay-done dari server.
+        if (replaying) return;
         const p = parseProgress(line);
         if (p) setProgress(p);
       }, () => {
@@ -112,7 +117,9 @@ export function JobDetail({ job, onBack, onRefresh, onRejected, onDelete, videoR
         }
         closed = true;
         clearFlush();
-      }, since);
+      }, since, () => {
+        replaying = false;
+      });
       es.onerror = () => {
         es?.close();
         es = null;

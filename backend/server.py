@@ -549,16 +549,27 @@ async def stream_log(job_id: str, since: int = 0):
 
     async def event_generator():
         idx = since
+        replay_done = False
         while True:
             logs = runner.recent_logs(idx)
             for line in logs:
                 yield {"event": "log", "data": line}
                 await asyncio.sleep(0)
             idx += len(logs)
+            if not replay_done and len(logs) == 0:
+                # Buffer replay selesai — frontend skip parseProgress selama
+                # replay (hard refresh: baris progress LAMA bikin bar menari
+                # download→…→reframe). Baris berikutnya = LIVE.
+                yield {"event": "replay-done", "data": ""}
+                replay_done = True
             if not runner.is_alive:
                 remaining = runner.recent_logs(idx)
                 for line in remaining:
                     yield {"event": "log", "data": line}
+                if not replay_done:
+                    # Runner mati bisa break sebelum marker sempat keluar —
+                    # pastikan marker tetap terkirim sebelum done.
+                    yield {"event": "replay-done", "data": ""}
                 yield {"event": "done", "data": ""}
                 break
             try:

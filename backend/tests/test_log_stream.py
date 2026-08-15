@@ -137,3 +137,42 @@ def test_main_thread_stdout_falls_back():
     proxy = server._ThreadRoutedStdout(fallback)
     proxy.write("hello\n")
     assert fallback.getvalue() == "hello\n"
+
+
+def test_sse_replay_done_marker():
+    """Bug glitch bar: hard refresh → since=0 → replay baris progress LAMA
+    bikin bar menari download→transcribe→…→reframe. Server harus kirim event
+    `replay-done` SETELAH buffer replay habis — baris berikutnya = LIVE,
+    frontend baru boleh parseProgress."""
+    import time
+    from starlette.testclient import TestClient
+
+    r = _runner()
+    r._log("progress 1/5")
+    r._log("progress 2/5")
+    server.JOB_RUNNERS["testjob"] = r
+    try:
+        with TestClient(server.app) as client:
+            with client.stream("GET", "/api/jobs/testjob/log?since=0") as resp:
+                events = []
+                lines = resp.iter_lines()
+                for _ in range(8):
+                    try:
+                        chunk = lines.__next__()
+                    except StopIteration:
+                        break
+                    if not chunk:
+                        continue
+                    if chunk.startswith("event:"):
+                        events.append(chunk.split("event:", 1)[1].strip())
+                        continue
+                    if chunk.startswith("data:"):
+                        events.append("DATA:" + chunk.split("data:", 1)[1].strip())
+                # urutan: baris replay → marker → (baris baru kalau masuk)
+                assert "replay-done" in events, f"marker tak ada: {events}"
+                data_idx = [i for i, e in enumerate(events) if e.startswith("DATA:") and len(e) > 5]
+                marker_idx = events.index("replay-done")
+                assert max(data_idx) < marker_idx, f"marker harus setelah replay: {events}"
+    finally:
+        server.JOB_RUNNERS.pop("testjob", None)
+    print("OK test_sse_replay_done_marker")

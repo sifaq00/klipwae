@@ -24,7 +24,10 @@ class Segment(BaseModel):
     confidence: float = Field(ge=0.0, le=1.0)
     reason: str
     caption_text: str | None = None
-    hook_score: float | None = None
+    hook_score: int = Field(default=85, ge=0, le=100, description="Hook potential score from 0 to 100")
+    virality_reason: str = Field(default="", description="Why this clip has viral potential")
+    affiliate_caption: str = Field(default="", description="Ready-to-post short caption with call to action")
+    hashtags: list[str] = Field(default_factory=list, description="Recommended TikTok/Shopee hashtags")
 
 
 class AnalysisResult(BaseModel):
@@ -114,7 +117,9 @@ def _caption_batch(client, system_prompt: str, batch: list[Segment], model: str)
     """SATU call Gemini utk 1 batch segmen. Retry 3x via tenacity."""
     payload = [
         {"idx": i, "start": s.start, "end": s.end,
-         "product": s.product_mentioned, "topic": s.topic}
+         "product": s.product_mentioned, "topic": s.topic,
+         "virality_reason": getattr(s, "virality_reason", ""),
+         "affiliate_caption": getattr(s, "affiliate_caption", "")}
         for i, s in enumerate(batch)
     ]
     response = client.models.generate_content(
@@ -156,8 +161,13 @@ def generate_captions(client, system_prompt: str, segments: list[Segment], model
 def fallback_caption(seg: Segment) -> str:
     """Caption cadangan kalau Gemini gagal — datanya sudah ada, tinggal
     dibungkus biar tetap bisa di-copy-paste ke TikTok."""
+    if seg.affiliate_caption:
+        tags = " ".join(seg.hashtags) if seg.hashtags else ""
+        return f"{seg.affiliate_caption}\n\n{tags}".strip() if tags else seg.affiliate_caption
     parts = [p for p in (seg.product_mentioned, seg.topic) if p]
-    return " — ".join(parts) if parts else "Klip produk"
+    base = " — ".join(parts) if parts else "Klip produk"
+    tags = " ".join(seg.hashtags) if seg.hashtags else ""
+    return f"{base}\n\n{tags}".strip() if tags else base
 
 
 def overlap_ratio(a: Segment, b: Segment) -> float:
@@ -332,6 +342,18 @@ class AnalyzeStage(Stage):
                     captions = {}
                 for i, seg in enumerate(final):
                     seg.caption_text = captions.get(i) or fallback_caption(seg)
+                    if not seg.affiliate_caption:
+                        seg.affiliate_caption = seg.caption_text
+                    if not seg.hashtags:
+                        extracted = [w for w in (seg.caption_text or "").split() if w.startswith("#")]
+                        seg.hashtags = extracted if extracted else ["#racuntiktok", "#affiliate"]
+            else:
+                for seg in final:
+                    seg.caption_text = fallback_caption(seg)
+                    if not seg.affiliate_caption:
+                        seg.affiliate_caption = seg.caption_text
+                    if not seg.hashtags:
+                        seg.hashtags = ["#racuntiktok", "#affiliate"]
 
         _write_segments_atomic(job_id, final)
         db.insert_segments(job_id, final)

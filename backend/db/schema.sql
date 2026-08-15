@@ -39,6 +39,10 @@ CREATE TABLE IF NOT EXISTS segments (
     clip_path          TEXT,
     caption_path       TEXT,
     caption_text       TEXT,
+    hook_score         INTEGER,
+    virality_reason    TEXT,
+    affiliate_caption  TEXT,
+    hashtags           TEXT,
     reviewed           BOOLEAN DEFAULT 0,
     posted             BOOLEAN DEFAULT 0,
     UNIQUE(job_id, clip_idx)

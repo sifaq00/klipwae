@@ -11,6 +11,7 @@ from stages.analyze import (
     Segment,
     chunk_transcript,
     deduplicate_overlapping_segments,
+    fallback_caption,
     format_chunk_for_prompt,
     merge_and_dedupe,
     overlap_ratio,
@@ -375,3 +376,69 @@ def test_analyze_stage_chunk_failure_does_not_fail_job(tmp_path):
         assert json.loads(out.read_text(encoding="utf-8")) == []
     finally:
         os.chdir(old_cwd)
+
+
+def test_segment_schema_new_fields():
+    import pydantic
+    import pytest
+
+    # Test default values
+    s_default = Segment(
+        start="00:01:00", end="00:02:00",
+        product_mentioned="Serum A", topic="Skincare",
+        confidence=0.85, reason="Bagus"
+    )
+    assert s_default.hook_score == 85
+    assert s_default.virality_reason == ""
+    assert s_default.affiliate_caption == ""
+    assert s_default.hashtags == []
+
+    # Test custom values
+    s_custom = Segment(
+        start="00:01:00", end="00:02:00",
+        product_mentioned="Serum A", topic="Skincare",
+        confidence=0.9, reason="Detail",
+        hook_score=92,
+        virality_reason="Transformasi cepat",
+        affiliate_caption="Klik keranjang kuning sekarang! ✨",
+        hashtags=["#racuntiktok", "#affiliate", "#skincare"]
+    )
+    assert s_custom.hook_score == 92
+    assert s_custom.virality_reason == "Transformasi cepat"
+    assert s_custom.affiliate_caption == "Klik keranjang kuning sekarang! ✨"
+    assert s_custom.hashtags == ["#racuntiktok", "#affiliate", "#skincare"]
+
+    # Test validation (hook_score 0-100)
+    with pytest.raises(pydantic.ValidationError):
+        Segment(
+            start="00:01:00", end="00:02:00",
+            product_mentioned="Serum A", topic="Skincare",
+            confidence=0.9, reason="Detail",
+            hook_score=105
+        )
+
+    with pytest.raises(pydantic.ValidationError):
+        Segment(
+            start="00:01:00", end="00:02:00",
+            product_mentioned="Serum A", topic="Skincare",
+            confidence=0.9, reason="Detail",
+            hook_score=-5
+        )
+
+
+def test_fallback_caption_with_affiliate():
+    s = Segment(
+        start="00:01:00", end="00:02:00",
+        product_mentioned="Somethinc Serum",
+        topic="Kulit cerah",
+        confidence=0.88,
+        reason="Detail review",
+        hook_score=90,
+        virality_reason="Viral review",
+        affiliate_caption="Wajib coba ini guys! Klik keranjang kuning ✨",
+        hashtags=["#racuntiktok", "#affiliate"]
+    )
+    fb = fallback_caption(s)
+    assert "Wajib coba ini guys!" in fb
+    assert "#racuntiktok #affiliate" in fb
+

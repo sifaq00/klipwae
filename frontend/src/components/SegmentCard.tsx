@@ -12,6 +12,7 @@ interface Props {
 
 export function SegmentCard({ seg, index, onPlay, onReject, onToggle, onToast }: Props) {
   const [copied, setCopied] = useState(false);
+  const [copiedAffiliate, setCopiedAffiliate] = useState(false);
   const conf = seg.confidence ?? 0;
 
   const copyCaption = async () => {
@@ -19,8 +20,25 @@ export function SegmentCard({ seg, index, onPlay, onReject, onToggle, onToast }:
     try {
       await navigator.clipboard.writeText(seg.caption_text);
       setCopied(true);
-      onToast?.("Caption tersalin ke clipboard");
+      onToast?.("Caption tersalin ke clipboard 📋");
       setTimeout(() => setCopied(false), 1600);
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const copyAffiliateCaption = async () => {
+    const textToCopy = seg.affiliate_caption
+      ? (seg.hashtags && seg.hashtags.length > 0
+          ? `${seg.affiliate_caption}\n\n${seg.hashtags.join(" ")}`
+          : seg.affiliate_caption)
+      : (seg.caption_text || "");
+    if (!textToCopy) return;
+    try {
+      await navigator.clipboard.writeText(textToCopy);
+      setCopiedAffiliate(true);
+      onToast?.("Affiliate caption tersalin ke clipboard 📋");
+      setTimeout(() => setCopiedAffiliate(false), 1600);
     } catch {
       /* ignore */
     }
@@ -53,12 +71,18 @@ export function SegmentCard({ seg, index, onPlay, onReject, onToggle, onToast }:
             <svg className="ml-0.5 h-5 w-5 text-white" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg>
           </span>
         </div>
-        <div className="absolute left-2.5 top-2.5 flex items-center gap-1.5">
+        <div className="absolute left-2.5 top-2.5 flex flex-wrap items-center gap-1.5 max-w-[85%]">
           <span className="chip border border-gold/40 bg-black/50 text-gold backdrop-blur-sm">
             <svg className="h-3 w-3" fill="currentColor" viewBox="0 0 24 24">
               <path d="M12 2l2.4 7.2H22l-6 4.4 2.3 7.1-6.3-4.5-6.3 4.5L8 13.6 2 9.2h7.6z" />
             </svg>
             {seg.product_mentioned || "produk"}
+          </span>
+          <span
+            className="chip border border-rose-500/40 bg-black/60 font-semibold text-rose-300 backdrop-blur-sm"
+            title={seg.virality_reason ? `Potensi Viral: ${seg.virality_reason}` : `Hook Score: ${seg.hook_score ?? 85}/100`}
+          >
+            🔥 {seg.hook_score ?? 85}/100
           </span>
         </div>
         <div className="absolute bottom-2.5 right-2.5 flex items-center gap-1.5">
@@ -81,7 +105,31 @@ export function SegmentCard({ seg, index, onPlay, onReject, onToggle, onToast }:
           <p className="line-clamp-2 flex-1 text-[13px] leading-snug text-slate-300">{seg.topic || "Tanpa topik"}</p>
         </div>
 
-        {seg.caption_text && (
+        {seg.affiliate_caption ? (
+          <div className="relative rounded-lg border border-amber-500/30 bg-amber-500/10 p-2.5">
+            <div className="flex items-center justify-between gap-1 mb-1">
+              <span className="text-[10px] font-semibold text-amber-300 flex items-center gap-1">
+                <span>✨ Affiliate Copy</span>
+              </span>
+              <button
+                onClick={copyAffiliateCaption}
+                className={`rounded-md px-2 py-0.5 text-[10px] font-semibold transition-all ${
+                  copiedAffiliate ? "bg-emerald-500/20 text-emerald-300" : "bg-amber-500/20 text-amber-300 hover:bg-amber-500/30"
+                }`}
+                title="Salin caption dan hashtags"
+              >
+                {copiedAffiliate ? "✓ Tersalin" : "📋 Salin Caption"}
+              </button>
+            </div>
+            <p className="whitespace-pre-wrap text-[11px] leading-relaxed text-slate-300">{seg.affiliate_caption}</p>
+            {seg.hashtags && seg.hashtags.length > 0 && (
+              <p className="mt-1.5 text-[10px] text-amber-200/70 font-mono">{seg.hashtags.join(" ")}</p>
+            )}
+            {seg.virality_reason && (
+              <p className="mt-1 text-[10px] italic text-slate-400">💡 {seg.virality_reason}</p>
+            )}
+          </div>
+        ) : seg.caption_text ? (
           <div className="relative rounded-lg border border-edge bg-raise/70 p-2.5">
             <button
               onClick={copyCaption}
@@ -90,11 +138,12 @@ export function SegmentCard({ seg, index, onPlay, onReject, onToggle, onToast }:
               }`}
               title="Salin caption"
             >
-              {copied ? "✓ Tersalin" : "Salin"}
+              {copied ? "✓ Tersalin" : "📋 Salin Caption"}
             </button>
             <pre className="whitespace-pre-wrap pr-12 text-[11px] leading-relaxed text-slate-400">{seg.caption_text}</pre>
           </div>
-        )}
+        ) : null}
+
 
         <div className="flex items-center gap-1.5 pt-0.5">
           <button

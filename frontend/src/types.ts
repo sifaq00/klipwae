@@ -45,6 +45,10 @@ export interface Segment {
   clip_path: string | null;
   caption_path: string | null;
   caption_text: string | null;
+  hook_score?: number;
+  virality_reason?: string;
+  affiliate_caption?: string;
+  hashtags?: string[];
   preview_url: string | null;
   thumb_url: string | null;
   caption_url: string | null;

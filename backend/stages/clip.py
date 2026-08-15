@@ -1,4 +1,4 @@
-﻿import json
+import json
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -32,7 +32,12 @@ def load_segments(path: Path) -> list[SimpleNamespace]:
             product_mentioned=s.get("product_mentioned"),
             topic=s.get("topic"),
             confidence=s.get("confidence", 0.0),
+            reason=s.get("reason"),
             caption_text=s.get("caption_text"),  # wajib: sub-klip di-DB tanpa ini = caption hilang
+            hook_score=s.get("hook_score", 85),
+            virality_reason=s.get("virality_reason", ""),
+            affiliate_caption=s.get("affiliate_caption", ""),
+            hashtags=s.get("hashtags", []),
         )
         for s in data
     ]

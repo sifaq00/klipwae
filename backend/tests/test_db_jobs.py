@@ -161,6 +161,114 @@ def test_record_metric():
     print("OK test_record_metric")
 
 
+def test_insert_and_get_segments_with_hook_and_affiliate():
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        os.chdir(tmp)
+        init_db()
+        db = JobDB()
+        try:
+            db.create_job("j1", "url")
+            from types import SimpleNamespace
+            segs = [
+                SimpleNamespace(
+                    start="00:01:00",
+                    end="00:01:30",
+                    product_mentioned="Somethinc Serum",
+                    topic="Review Serum Glowing",
+                    confidence=0.92,
+                    reason="Ulasan mendalam",
+                    caption_text="Pakai serum ini langsung glowing ✨\n#racuntiktok #affiliate",
+                    hook_score=95,
+                    virality_reason="Efek instan 3 hari",
+                    affiliate_caption="Klik keranjang kuning sekarang! ✨",
+                    hashtags=["#racuntiktok", "#affiliate", "#skincare"],
+                ),
+            ]
+            db.insert_segments("j1", segs)
+            retrieved = db.get_job_segments("j1")
+            assert len(retrieved) == 1
+            r = retrieved[0]
+            assert r["hook_score"] == 95
+            assert r["virality_reason"] == "Efek instan 3 hari"
+            assert r["affiliate_caption"] == "Klik keranjang kuning sekarang! ✨"
+            assert r["hashtags"] == ["#racuntiktok", "#affiliate", "#skincare"]
+
+            # Test upsert_clip_segment
+            db.upsert_clip_segment(
+                "j1", clip_idx=0,
+                start="00:01:00", end="00:01:30",
+                seg=segs[0],
+                clip_path="data/clips_raw/j1_000.mp4"
+            )
+            db.delete_unclipped("j1")
+            retrieved2 = db.get_job_segments("j1")
+            assert len(retrieved2) == 1
+            r2 = retrieved2[0]
+            assert r2["clip_idx"] == 0
+            assert r2["hook_score"] == 95
+            assert r2["affiliate_caption"] == "Klik keranjang kuning sekarang! ✨"
+            assert r2["hashtags"] == ["#racuntiktok", "#affiliate", "#skincare"]
+
+            # Test updating existing clip segment via upsert_clip_segment
+            updated_seg = SimpleNamespace(
+                product_mentioned="Somethinc Serum",
+                topic="Review",
+                confidence=0.95,
+                reason="Updated",
+                caption_text="New text",
+                hook_score=99,
+                virality_reason="Mega viral",
+                affiliate_caption="Beli sekarang!",
+                hashtags=["#viral"],
+            )
+            db.upsert_clip_segment(
+                "j1", clip_idx=0,
+                start="00:01:00", end="00:01:30",
+                seg=updated_seg,
+                clip_path="data/clips_raw/j1_000.mp4"
+            )
+            retrieved3 = db.get_job_segments("j1")
+            assert len(retrieved3) == 1
+            assert retrieved3[0]["hook_score"] == 99
+            assert retrieved3[0]["virality_reason"] == "Mega viral"
+            assert retrieved3[0]["affiliate_caption"] == "Beli sekarang!"
+            assert retrieved3[0]["hashtags"] == ["#viral"]
+        finally:
+            db.close()
+    print("OK test_insert_and_get_segments_with_hook_and_affiliate")
+
+
+def test_ensure_columns_migration():
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        os.chdir(tmp)
+        # Create legacy table without new columns
+        conn = get_connection()
+        conn.execute("""
+            CREATE TABLE segments (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                job_id TEXT,
+                start_time TEXT,
+                end_time TEXT,
+                product_mentioned TEXT,
+                topic TEXT,
+                confidence REAL,
+                reason TEXT
+            )
+        """)
+        conn.commit()
+        conn.close()
+
+        # JobDB initialization should trigger _ensure_columns and add missing columns
+        db = JobDB()
+        try:
+            cols = {r[1] for r in db.conn.execute("PRAGMA table_info(segments)").fetchall()}
+            for expected in ("clip_idx", "caption_text", "hook_score", "virality_reason", "affiliate_caption", "hashtags"):
+                assert expected in cols, f"Column {expected} missing after migration"
+        finally:
+            db.close()
+    print("OK test_ensure_columns_migration")
+
+
 if __name__ == "__main__":
     test_get_connection_wal()
     test_init_db()
@@ -170,4 +278,7 @@ if __name__ == "__main__":
     test_stage_runs()
     test_insert_segments_idempotent()
     test_record_metric()
+    test_insert_and_get_segments_with_hook_and_affiliate()
+    test_ensure_columns_migration()
     print("\nAll DB tests passed.")
+

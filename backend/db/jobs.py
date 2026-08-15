@@ -27,29 +27,37 @@ def init_db():
 
 def _ensure_columns(conn: sqlite3.Connection):
     """Migrasi ringan untuk DB yang sudah ada: tambah kolom baru kalau belum ada."""
-    existing = {r[1] for r in conn.execute("PRAGMA table_info(segments)")}
-    for col, ddl in {
-        "clip_idx": "INTEGER",
-        "caption_text": "TEXT",
-    }.items():
-        if col not in existing:
-            conn.execute(f"ALTER TABLE segments ADD COLUMN {col} {ddl}")
-    job_cols = {r[1] for r in conn.execute("PRAGMA table_info(jobs)")}
-    if "caption_style" not in job_cols:
-        conn.execute("ALTER TABLE jobs ADD COLUMN caption_style TEXT")
-    if "notice" not in job_cols:
-        conn.execute("ALTER TABLE jobs ADD COLUMN notice TEXT")
-    # DB lama dibuat sebelum UNIQUE(job_id, clip_idx) ada di schema.sql —
-    # upsert ON CONFLICT butuh index ini (bug ketemu saat validasi e2e).
-    conn.execute(
-        "CREATE UNIQUE INDEX IF NOT EXISTS idx_segments_job_clip ON segments(job_id, clip_idx)"
-    )
+    tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
+    if "segments" in tables:
+        existing = {r[1] for r in conn.execute("PRAGMA table_info(segments)").fetchall()}
+        for col, ddl in {
+            "clip_idx": "INTEGER",
+            "caption_text": "TEXT",
+            "hook_score": "INTEGER",
+            "virality_reason": "TEXT",
+            "affiliate_caption": "TEXT",
+            "hashtags": "TEXT",
+        }.items():
+            if col not in existing:
+                conn.execute(f"ALTER TABLE segments ADD COLUMN {col} {ddl}")
+        # DB lama dibuat sebelum UNIQUE(job_id, clip_idx) ada di schema.sql —
+        # upsert ON CONFLICT butuh index ini (bug ketemu saat validasi e2e).
+        conn.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_segments_job_clip ON segments(job_id, clip_idx)"
+        )
+    if "jobs" in tables:
+        job_cols = {r[1] for r in conn.execute("PRAGMA table_info(jobs)").fetchall()}
+        if "caption_style" not in job_cols:
+            conn.execute("ALTER TABLE jobs ADD COLUMN caption_style TEXT")
+        if "notice" not in job_cols:
+            conn.execute("ALTER TABLE jobs ADD COLUMN notice TEXT")
     conn.commit()
 
 
 class JobDB:
     def __init__(self):
         self.conn = get_connection()
+        _ensure_columns(self.conn)
 
     def close(self):
         self.conn.close()
@@ -113,24 +121,75 @@ class JobDB:
         # prompt di-tune) tidak menyebabkan duplikat segmen di DB.
         self.conn.execute("DELETE FROM segments WHERE job_id=?", (job_id,))
         for seg in segments:
+            hashtags_val = getattr(seg, "hashtags", None)
+            if isinstance(hashtags_val, list):
+                hashtags_json = json.dumps(hashtags_val, ensure_ascii=False)
+            elif isinstance(hashtags_val, str):
+                hashtags_json = hashtags_val
+            else:
+                hashtags_json = json.dumps([])
+
+            start_time = getattr(seg, "start", getattr(seg, "start_time", None))
+            end_time = getattr(seg, "end", getattr(seg, "end_time", None))
+
             self.conn.execute(
-                "INSERT INTO segments (job_id, start_time, end_time, product_mentioned, topic, confidence, reason, caption_text) VALUES (?,?,?,?,?,?,?,?)",
-                (job_id, seg.start, seg.end, seg.product_mentioned, seg.topic, seg.confidence, seg.reason, getattr(seg, "caption_text", None)),
+                """INSERT INTO segments (
+                    job_id, start_time, end_time, product_mentioned, topic,
+                    confidence, reason, caption_text, hook_score,
+                    virality_reason, affiliate_caption, hashtags
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (
+                    job_id,
+                    start_time,
+                    end_time,
+                    getattr(seg, "product_mentioned", None),
+                    getattr(seg, "topic", None),
+                    getattr(seg, "confidence", 0.0),
+                    getattr(seg, "reason", None),
+                    getattr(seg, "caption_text", None),
+                    getattr(seg, "hook_score", 85),
+                    getattr(seg, "virality_reason", ""),
+                    getattr(seg, "affiliate_caption", ""),
+                    hashtags_json,
+                ),
             )
         self.conn.commit()
 
     def upsert_clip_segment(self, job_id: str, clip_idx: int, start: str, end: str, seg, clip_path: str):
         """Insert/update segmen hasil split di stage clip. Idempotent per (job_id, clip_idx)."""
+        hashtags_val = getattr(seg, "hashtags", None)
+        if isinstance(hashtags_val, list):
+            hashtags_json = json.dumps(hashtags_val, ensure_ascii=False)
+        elif isinstance(hashtags_val, str):
+            hashtags_json = hashtags_val
+        else:
+            hashtags_json = json.dumps([])
+
         self.conn.execute(
-            """INSERT INTO segments (job_id, clip_idx, start_time, end_time, product_mentioned, topic, confidence, reason, caption_text, clip_path)
-               VALUES (?,?,?,?,?,?,?,?,?,?)
-               ON CONFLICT(job_id, clip_idx) DO UPDATE SET
-                 start_time=excluded.start_time, end_time=excluded.end_time,
-                 caption_text=excluded.caption_text, clip_path=excluded.clip_path""",
-            (job_id, clip_idx, start, end,
-             getattr(seg, "product_mentioned", None), getattr(seg, "topic", None),
-             getattr(seg, "confidence", 0.0), getattr(seg, "reason", None),
-             getattr(seg, "caption_text", None), clip_path),
+            """INSERT INTO segments (
+                job_id, clip_idx, start_time, end_time, product_mentioned,
+                topic, confidence, reason, caption_text, clip_path,
+                hook_score, virality_reason, affiliate_caption, hashtags
+            )
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            ON CONFLICT(job_id, clip_idx) DO UPDATE SET
+              start_time=excluded.start_time, end_time=excluded.end_time,
+              caption_text=excluded.caption_text, clip_path=excluded.clip_path,
+              hook_score=excluded.hook_score, virality_reason=excluded.virality_reason,
+              affiliate_caption=excluded.affiliate_caption, hashtags=excluded.hashtags""",
+            (
+                job_id, clip_idx, start, end,
+                getattr(seg, "product_mentioned", None),
+                getattr(seg, "topic", None),
+                getattr(seg, "confidence", 0.0),
+                getattr(seg, "reason", None),
+                getattr(seg, "caption_text", None),
+                clip_path,
+                getattr(seg, "hook_score", 85),
+                getattr(seg, "virality_reason", ""),
+                getattr(seg, "affiliate_caption", ""),
+                hashtags_json,
+            ),
         )
         self.conn.commit()
 
@@ -146,7 +205,22 @@ class JobDB:
         rows = self.conn.execute(
             "SELECT * FROM segments WHERE job_id=? ORDER BY id", (job_id,)
         ).fetchall()
-        return [dict(r) for r in rows]
+        result = []
+        for r in rows:
+            d = dict(r)
+            if d.get("hashtags"):
+                try:
+                    d["hashtags"] = json.loads(d["hashtags"]) if isinstance(d["hashtags"], str) else d["hashtags"]
+                except Exception:
+                    d["hashtags"] = []
+            else:
+                d["hashtags"] = []
+            result.append(d)
+        return result
+
+    def get_segments(self, job_id: str) -> list:
+        return self.get_job_segments(job_id)
+
 
     def get_job_style(self, job_id: str) -> str | None:
         row = self.conn.execute(

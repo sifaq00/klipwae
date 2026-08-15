@@ -427,6 +427,7 @@ export function JobDetail({ job, onBack, onRefresh, onRejected, onDelete, videoR
           onNext={() => movePlayer(1)}
           onToggle={(field) => toggle(player.seg, field)}
           onReject={() => handleReject(player.seg)}
+          onToast={showToast}
         />
       )}
 
@@ -552,7 +553,7 @@ function fmtStageDur(start: string, end: string): string {
   return `${Math.floor(sec / 60)}m ${sec % 60}s`;
 }
 
-function PlayerModal({ seg, index, total, onClose, onPrev, onNext, onToggle, onReject }: {
+function PlayerModal({ seg, index, total, onClose, onPrev, onNext, onToggle, onReject, onToast }: {
   seg: Segment;
   index: number;
   total: number;
@@ -561,14 +562,33 @@ function PlayerModal({ seg, index, total, onClose, onPrev, onNext, onToggle, onR
   onNext: () => void;
   onToggle: (field: "reviewed" | "posted") => void;
   onReject: () => void;
+  onToast?: (msg: string) => void;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const [copiedCaption, setCopiedCaption] = useState(false);
 
   const spaceToggle = (e: React.KeyboardEvent) => {
     if (e.key === " " && videoRef.current) {
       e.preventDefault();
       const v = videoRef.current;
       if (v.paused) v.play(); else v.pause();
+    }
+  };
+
+  const handleCopyCaption = async () => {
+    const textToCopy = seg.affiliate_caption
+      ? (seg.hashtags && seg.hashtags.length > 0
+          ? `${seg.affiliate_caption}\n\n${seg.hashtags.join(" ")}`
+          : seg.affiliate_caption)
+      : (seg.caption_text || "");
+    if (!textToCopy) return;
+    try {
+      await navigator.clipboard.writeText(textToCopy);
+      setCopiedCaption(true);
+      onToast?.("Caption tersalin ke clipboard 📋");
+      setTimeout(() => setCopiedCaption(false), 1600);
+    } catch {
+      /* ignore */
     }
   };
 
@@ -584,20 +604,26 @@ function PlayerModal({ seg, index, total, onClose, onPrev, onNext, onToggle, onR
             className="max-h-[76vh] w-auto rounded-lg border border-edge/50 bg-black shadow-2xl"
             style={{ aspectRatio: "9/16" }}
           />
-          {seg.product_mentioned && (
-            <div className="absolute left-2.5 top-2.5 max-w-[55%]">
+          <div className="absolute left-2.5 top-2.5 flex flex-wrap items-center gap-1.5 max-w-[65%]">
+            {seg.product_mentioned && (
               <span className="chip max-w-full truncate border border-gold/40 bg-black/60 px-2 py-0.5 text-[10px] text-gold backdrop-blur">
                 ★ {seg.product_mentioned}
               </span>
-            </div>
-          )}
+            )}
+            <span
+              className="chip border border-rose-500/40 bg-black/60 px-2 py-0.5 text-[10px] font-semibold text-rose-300 backdrop-blur"
+              title={seg.virality_reason ? `Potensi Viral: ${seg.virality_reason}` : `Hook Score: ${seg.hook_score ?? 85}/100`}
+            >
+              🔥 {seg.hook_score ?? 85}/100
+            </span>
+          </div>
           <div className="absolute right-2.5 top-2.5 flex gap-1.5">
             <button onClick={onPrev} disabled={index === 0} className="btn-ghost h-8 w-8 rounded-full p-0 text-xs disabled:opacity-30" title="← Klip sebelumnya">←</button>
             <button onClick={onNext} disabled={index >= total - 1} className="btn-ghost h-8 w-8 rounded-full p-0 text-xs disabled:opacity-30" title="Klip berikutnya →">→</button>
             <button onClick={onClose} className="btn-ghost h-8 w-8 rounded-full p-0 text-xs" title="Tutup (Esc)">✕</button>
           </div>
         </div>
-        <div className="mt-3 flex w-full items-center gap-1.5 rounded-xl border border-edge/60 bg-raise/80 px-2.5 py-2 backdrop-blur">
+        <div className="mt-3 flex w-full flex-wrap items-center gap-1.5 rounded-xl border border-edge/60 bg-raise/80 px-2.5 py-2 backdrop-blur">
           <span className="mr-1.5 font-mono text-[11px] text-slate-500">{index + 1}/{total}</span>
           <button onClick={() => onToggle("reviewed")} className={`flex-1 rounded-lg border px-2 py-1.5 text-[11px] font-semibold transition-all active:scale-[0.97] ${seg.reviewed ? "border-emerald-500/50 bg-emerald-500/15 text-emerald-300" : "border-edge bg-raise/50 text-slate-400 hover:border-emerald-500/40 hover:text-emerald-300"}`}>
             {seg.reviewed ? "✓ Reviewed" : "Review"}
@@ -605,6 +631,17 @@ function PlayerModal({ seg, index, total, onClose, onPrev, onNext, onToggle, onR
           <button onClick={() => onToggle("posted")} className={`flex-1 rounded-lg border px-2 py-1.5 text-[11px] font-semibold transition-all active:scale-[0.97] ${seg.posted ? "border-gold/60 bg-gold/15 text-gold" : "border-edge bg-raise/50 text-slate-400 hover:border-gold/50 hover:text-gold"}`}>
             {seg.posted ? "🛒 Posted" : "Keranjang 🛒"}
           </button>
+          {(seg.affiliate_caption || seg.caption_text) && (
+            <button
+              onClick={handleCopyCaption}
+              className={`rounded-lg border px-2 py-1.5 text-[11px] font-semibold transition-all active:scale-[0.97] ${
+                copiedCaption ? "border-emerald-500/50 bg-emerald-500/15 text-emerald-300" : "border-amber-500/40 bg-amber-500/15 text-amber-300 hover:bg-amber-500/25"
+              }`}
+              title="Salin caption affiliate + hashtags"
+            >
+              {copiedCaption ? "✓ Tersalin" : "📋 Salin Caption"}
+            </button>
+          )}
           <button onClick={onReject} className="rounded-lg border border-edge bg-raise/50 px-2 py-1.5 text-[11px] font-semibold text-slate-500 transition-all hover:border-red-500/50 hover:text-red-400 active:scale-[0.97]">Buang</button>
           {seg.preview_url && (
             <a
@@ -617,7 +654,12 @@ function PlayerModal({ seg, index, total, onClose, onPrev, onNext, onToggle, onR
             </a>
           )}
         </div>
-        <p className="mt-1.5 text-[10px] text-slate-600">
+        {seg.virality_reason && (
+          <p className="mt-1 text-center text-[10px] italic text-amber-300/80">
+            💡 {seg.virality_reason}
+          </p>
+        )}
+        <p className="mt-1 text-[10px] text-slate-600">
           ← → ganti klip · Spasi play/pause · Esc tutup
         </p>
       </div>

@@ -1,4 +1,4 @@
-﻿import asyncio
+import asyncio
 import io
 import logging
 import logging.handlers
@@ -327,8 +327,44 @@ async def create_job(body: CreateJobRequest):
 
     runner = JobRunner(video_id, body.url)
     JOB_RUNNERS[video_id] = runner
+    # INSERT dulu: _fetch_meta_early (UPDATE) tak boleh kalah sama INSERT
+    # runner thread → kalau 0 rows, title awal diam-diam hilang.
+    db0 = JobDB()
+    try:
+        db0.create_job(video_id, body.url)
+    finally:
+        db0.close()
     runner.start()
+    # Judul/channel/duration langsung dari YouTube (tanpa download) — UI
+    # menampilkan judul + thumbnail sejak menit pertama, bukan nunggu
+    # download selesai. Ingest tetap ambil metadata lagi setelah download
+    # (fallback konsisten, update idempoten).
+    threading.Thread(target=_fetch_meta_early, args=(video_id, body.url), daemon=True).start()
     return {"job_id": video_id, "status": "started"}
+
+
+def _fetch_meta_early(job_id: str, url: str):
+    """Judul/channel/duration langsung dari YouTube (tanpa download) — UI
+    menampilkan judul + thumbnail sejak menit pertama, bukan nunggu download
+    selesai. Ingest tetap ambil metadata lagi setelah download (fallback
+    konsisten, update idempoten)."""
+    from stages.ingest import get_yt_metadata
+    try:
+        meta = get_yt_metadata(url, timeout=30)
+        if not meta or meta.get("title") is None or meta.get("duration") is None:
+            return
+        db = JobDB()
+        try:
+            db.update_job_metadata(
+                job_id,
+                title=meta.get("title"),
+                duration_sec=meta.get("duration"),
+                channel=meta.get("channel"),
+            )
+        finally:
+            db.close()
+    except Exception:
+        logging.getLogger(__name__).debug("fetch_meta_early failed", exc_info=True)
 
 
 @app.get("/api/jobs")
@@ -540,6 +576,15 @@ def _resolve_clip_path(clip_path: str) -> Path:
 
 
 def _segment_json(seg: dict) -> dict:
+    if isinstance(seg.get("hashtags"), str):
+        try:
+            seg["hashtags"] = json.loads(seg["hashtags"])
+        except Exception:
+            seg["hashtags"] = []
+    elif seg.get("hashtags") is None:
+        seg["hashtags"] = []
+    if seg.get("hook_score") is None:
+        seg["hook_score"] = 85
     clip_path = seg.get("clip_path")
     if clip_path:
         clip = _resolve_clip_path(clip_path)

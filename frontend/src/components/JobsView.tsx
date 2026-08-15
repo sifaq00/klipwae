@@ -76,7 +76,6 @@ export function JobsView({ jobs, activeJob, onOpen, onDelete }: Props) {
 function JobCard({ job, index, active, onOpen, onDelete }: { job: Job; index: number; active: boolean; onOpen: () => void; onDelete: () => void }) {
   const meta = statusMeta(job.status);
   const stageIdx = STAGES.findIndex((s) => s.key === (STATUS_TO_STAGE[job.status] ?? job.status));
-  const progress = stageIdx >= 0 ? ((stageIdx + 1) / STAGES.length) * 100 : job.status === "done" ? 100 : 0;
 
   return (
     <div
@@ -121,24 +120,56 @@ function JobCard({ job, index, active, onOpen, onDelete }: { job: Job; index: nu
               </span>
             )}
           </div>
-          <div className="mt-3">
-            <div className="flex items-center gap-2">
-              <div className="h-1 flex-1 overflow-hidden rounded-full bg-raise">
-                <div
-                  className={`h-full rounded-full transition-all duration-700 ${
-                    job.status === "failed" || job.status === "killed"
-                      ? "bg-red-500/70"
-                      : job.running
-                      ? "animated-stripes animate-barStripes bg-gradient-to-r from-accent to-neon"
-                      : "bg-gradient-to-r from-emerald-500 to-emerald-400"
-                  }`}
-                  style={{ width: `${progress}%` }}
-                />
+          <div className="mt-3.5 space-y-1.5">
+            <div className="flex items-center justify-between gap-2 text-[11px]">
+              <div className="flex items-center gap-1.5 text-slate-400 font-medium">
+                {job.running ? (
+                  <span className="font-mono text-cyan-300 flex items-center gap-1.5">
+                    <span className="h-1.5 w-1.5 rounded-full bg-cyan-400 animate-pulseGlow" />
+                    Tahap {stageIdx >= 0 ? stageIdx + 1 : 1}/6 · {STAGES[stageIdx >= 0 ? stageIdx : 0]?.label}
+                  </span>
+                ) : job.status === "done" ? (
+                  <span className="text-emerald-400 flex items-center gap-1">
+                    <svg className="h-3 w-3 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                    </svg>
+                    6/6 Selesai
+                  </span>
+                ) : job.status === "failed" ? (
+                  <span className="text-red-400">Gagal di tahap {stageIdx >= 0 ? STAGES[stageIdx]?.label : ""}</span>
+                ) : (
+                  <span className="text-slate-500">Menunggu antrean</span>
+                )}
               </div>
-              <span className={`chip border ${meta.color} gap-1.5`}>
+              <span className={`chip border ${meta.color} gap-1.5 py-0 px-2 text-[10px]`}>
                 {renderStageIcon(job.status, "h-3 w-3 shrink-0")}
                 {meta.label}
               </span>
+            </div>
+
+            {/* ── 6-Segment Pipeline Progress Rail ── */}
+            <div className="flex h-2 w-full gap-1.5">
+              {STAGES.map((s, i) => {
+                const isPassed = job.status === "done" || (stageIdx >= 0 && i < stageIdx);
+                const isCurrent = job.running && (stageIdx === i || (stageIdx < 0 && i === 0));
+                const isError = (job.status === "failed" || job.status === "killed") && stageIdx === i;
+
+                return (
+                  <div
+                    key={s.key}
+                    title={`${s.label}: ${s.hint}`}
+                    className={`relative flex-1 rounded-full transition-all duration-500 ${
+                      isPassed
+                        ? "bg-gradient-to-r from-teal-500 to-emerald-400 shadow-[0_0_8px_rgba(20,184,166,0.3)]"
+                        : isCurrent
+                        ? "bg-gradient-to-r from-accent via-cyan-400 to-neon shadow-[0_0_12px_rgba(34,211,238,0.7)] animate-pulse"
+                        : isError
+                        ? "bg-red-500/80 shadow-[0_0_8px_rgba(239,68,68,0.4)]"
+                        : "bg-raise/80 border border-edge/40"
+                    }`}
+                  />
+                );
+              })}
             </div>
           </div>
         </div>

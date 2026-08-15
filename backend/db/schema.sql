@@ -64,3 +64,9 @@ CREATE TABLE IF NOT EXISTS schema_version (
     version INTEGER PRIMARY KEY,
     applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+-- ── Performance Indexes ───────────────────────────────────────────
+CREATE INDEX IF NOT EXISTS idx_stage_runs_lookup ON stage_runs(job_id, stage, status);
+CREATE INDEX IF NOT EXISTS idx_metrics_lookup ON metrics(job_id, stage);
+CREATE INDEX IF NOT EXISTS idx_segments_job_id ON segments(job_id);
+CREATE INDEX IF NOT EXISTS idx_jobs_created_at ON jobs(created_at DESC);

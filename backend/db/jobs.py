@@ -61,7 +61,6 @@ def _ensure_columns(conn: sqlite3.Connection):
 class JobDB:
     def __init__(self):
         self.conn = get_connection()
-        _ensure_columns(self.conn)
 
     def close(self):
         self.conn.close()

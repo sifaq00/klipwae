@@ -22,17 +22,9 @@ export default {
           "0%": { opacity: "0", transform: "translateY(10px)" },
           "100%": { opacity: "1", transform: "translateY(0)" },
         },
-        shimmer: {
-          "0%": { backgroundPosition: "-200% 0" },
-          "100%": { backgroundPosition: "200% 0" },
-        },
         pulseGlow: {
           "0%, 100%": { opacity: "0.55" },
           "50%": { opacity: "1" },
-        },
-        scan: {
-          "0%": { transform: "translateY(-100%)" },
-          "100%": { transform: "translateY(100%)" },
         },
         barStripes: {
           "0%": { backgroundPosition: "0 0" },
@@ -45,9 +37,7 @@ export default {
       },
       animation: {
         fadeUp: "fadeUp 0.4s ease-out both",
-        shimmer: "shimmer 2.2s linear infinite",
         pulseGlow: "pulseGlow 2s ease-in-out infinite",
-        scan: "scan 2.4s ease-in-out infinite",
         barStripes: "barStripes 0.8s linear infinite",
         spinSlow: "spinSlow 6s linear infinite",
       },

@@ -1,32 +1,12 @@
-import subprocess
 from pathlib import Path
 
 import structlog
 from stages.base import Stage, StageResult, StageStatus
 from stages.registry import register
 from utils.gpu_cleanup import clean_gpu_memory
+from utils.video_info import get_video_info
 
 logger = structlog.get_logger(__name__)
-
-
-def _get_video_info(video_path: Path) -> tuple[float, float]:
-    result = subprocess.run(
-        ["ffprobe", "-v", "error", "-select_streams", "v:0",
-         "-show_entries", "stream=r_frame_rate,duration",
-         "-of", "csv=p=0", str(video_path)],
-        capture_output=True, text=True, timeout=30,
-    )
-    parts = result.stdout.strip().split(",")
-    if len(parts) < 2:
-        return 30.0, 0.0
-    fps_str = parts[0]
-    if "/" in fps_str:
-        num, den = fps_str.split("/")
-        fps = float(num) / float(den)
-    else:
-        fps = float(fps_str)
-    duration = float(parts[1])
-    return fps, duration
 
 
 @register
@@ -87,7 +67,7 @@ class ReframeStage(Stage):
             layouts.add(layout)
 
             try:
-                fps, duration = _get_video_info(clip)
+                fps, duration = get_video_info(clip)
                 if duration <= 0:
                     raise RuntimeError("invalid video duration")
                 if layout == "split_screen" and regions:

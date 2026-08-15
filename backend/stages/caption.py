@@ -13,7 +13,7 @@ from utils.time_helpers import hms_to_sec
 
 logger = structlog.get_logger(__name__)
 
-CLIP_BUFFER_SEC = 1.5  # sama dengan clip.py â€” kata di ambang segmen ikut ke-subtitle
+CLIP_BUFFER_SEC = 1.5  # sama dengan clip.py — kata di ambang segmen ikut ke-subtitle
 
 
 def _sanitize_ass_text(text: str) -> str:
@@ -33,7 +33,7 @@ def _sec_to_ass_time(sec: float) -> str:
 
 
 def _hex_to_bgr(hex_color: str) -> str:
-    """#RRGGBB â†’ ASS &H00BBGGRR (primary/secondary) atau &HBBGGRR (override \c)."""
+    """#RRGGBB ? ASS &H00BBGGRR (primary/secondary) atau &HBBGGRR (override \c)."""
     h = hex_color.lstrip("#")
     if len(h) != 6:
         h = "FFFFFF"
@@ -86,7 +86,7 @@ def generate_ass(words: list[dict], style: str = "highlight",
 
     style='highlight': kata yang sedang diucapkan berwarna beda (karaoke style,
     umum di TikTok). style='static': satu baris kalimat muncul-hilang biasa.
-    style_cfg: dict konfigurasi gaya (font/ukuran/warna/dll) — kalau None,
+    style_cfg: dict konfigurasi gaya (font/ukuran/warna/dll) ? kalau None,
     pakai default global dari utils.caption_style.
 
     words: list of {"text": str, "start": float, "end": float}
@@ -105,15 +105,15 @@ def generate_ass(words: list[dict], style: str = "highlight",
 
     lines = [header]
     to_upper = bool(style_cfg.get("uppercase", False))
-    # Line spacing: sisip baris kosong ber-{\fsN} antar baris visual — libass
-    # nggak support field LineSpacing, trik ini kasih gap ≈ N px.
+    # Line spacing: sisip baris kosong ber-{\fsN} antar baris visual ? libass
+    # nggak support field LineSpacing, trik ini kasih gap ? N px.
     # {\fsN} harus di-reset ke ukuran asli setelahnya, kalau tidak baris
     # berikutnya ikut mengecil (override \fs nempel sampai akhir block).
     ls = max(0, int(style_cfg.get("line_spacing", 0) or 0))
     fs_default = int(style_cfg.get("size", 96) or 96)
     line_sep = "\\N" if ls == 0 else f"\\N{{\\fs{ls}}} {{\\fs{fs_default}}}\\N"
     # Wrap dinamis: batas char disesuaikan ukuran font biar baris tidak
-    # melebihi lebar 1080 (margin kiri/kanan 40px). 0.5 ≈ lebar char rata-rata.
+    # melebihi lebar 1080 (margin kiri/kanan 40px). 0.5 ? lebar char rata-rata.
     wrap_max_chars = max(12, int(1000 / (fs_default * 0.5)))
 
     def _text(w: dict) -> str:
@@ -121,7 +121,7 @@ def generate_ass(words: list[dict], style: str = "highlight",
         return t.upper() if to_upper else t
 
     def _wrap(texts: list[str], max_chars: int = 38) -> list[list[str]]:
-        """Bungkus kata jadi baris visual — konsisten antar dialogue."""
+        """Bungkus kata jadi baris visual ? konsisten antar dialogue."""
         out = []
         cur = []
         cur_len = 0
@@ -142,15 +142,15 @@ def generate_ass(words: list[dict], style: str = "highlight",
         # Style TikTok: cuma kata yang SEDANG diucapkan yang kuning, sisanya
         # putih. Dikerjakan sebagai N baris dialogue (satu per kata aktif):
         # tiap baris = kalimat penuh, kata ke-i dibungkus {\c highlight}.
-        # Baris i tampil tepat di timing kata i → libass gambar baris terbaru
+        # Baris i tampil tepat di timing kata i ? libass gambar baris terbaru
         # di atas (z-order), jadi efeknya kata aktif kuning, sisanya putih.
         # TIDAK pakai \k (warna terkunci) dan TIDAK pakai \t (animasi rusak
-        # di libass build ini — end-state nempel dari awal).
+        # di libass build ini ? end-state nempel dari awal).
         sentences = _group_sentences(words)
         hl = _hex_to_bgr(style_cfg.get("highlight_color", "#FFFF00"))
         txt = _hex_to_bgr(style_cfg.get("text_color", "#FFFFFF"))
         pop = bool(style_cfg.get("pop", False))
-        bounce = bool(style_cfg.get("bounce", True))
+        bounce = bool(style_cfg.get("bounce", False))
         active_scale = "\\fscx106\\fscy106" if pop else ""
         bounce_tag = "{\\t(0,80,\\fscx114\\fscy114)\\t(80,160,\\fscx100\\fscy100)}" if bounce else ""
         for sent in sentences:
@@ -189,7 +189,7 @@ def generate_ass(words: list[dict], style: str = "highlight",
         for sent in sentences:
             start = sent[0]["start"]
             end = sent[-1]["end"]
-            # Sanitize per kata DULU — line_sep berisi tag \N/{\fs} yang
+            # Sanitize per kata DULU ? line_sep berisi tag \N/{\fs} yang
             # jangan ikut di-escape.
             wrapped = _wrap([_sanitize_ass_text(_text(w)) for w in sent], wrap_max_chars)
             lines.append(
@@ -201,7 +201,7 @@ def generate_ass(words: list[dict], style: str = "highlight",
 
 
 def _make_thumb(final_path: Path):
-    """Thumbnail poster 1 frame buat kartu review UI â€” hindari UI load video
+    """Thumbnail poster 1 frame buat kartu review UI — hindari UI load video
     penuh (10+ video sekaligus bikin backend pegang handle file terus)."""
     thumb = final_path.with_suffix(".jpg")
     if thumb.exists():
@@ -242,7 +242,7 @@ class CaptionStage(Stage):
     def is_complete(self, job_id: str, db) -> bool:
         # DB-driven: semua segmen yang punya clip sudah punya caption final.
         # Guard: segments file ada tapi DB kosong (state korup, lihat bug
-        # upsert e2e) â†’ anggap belum selesai, biar stage jalan dan repair.
+        # upsert e2e) ? anggap belum selesai, biar stage jalan dan repair.
         if Path(f"data/segments/{job_id}.json").exists():
             try:
                 if json.loads(Path(f"data/segments/{job_id}.json").read_text(encoding="utf-8")):
@@ -299,12 +299,12 @@ class CaptionStage(Stage):
             if runtime.stop_requested(job_id):
                 return 0, row["id"], None, {"killed": True}
             clip = Path(row["clip_path"])
-            # Prefer reframed (vertikal 9:16) â€” fallback ke raw kalau reframe skip
+            # Prefer reframed (vertikal 9:16) — fallback ke raw kalau reframe skip
             reframed = clip.with_name(clip.stem + "_reframed.mp4")
             source = reframed if reframed.exists() else clip
             final_path = final_dir / source.name.replace("_reframed", "")
             ass_path = final_dir / final_path.with_suffix(".ass").name
-            # Skip hanya kalau final DAN .ass-nya ada — kalau nggak, caption_url
+            # Skip hanya kalau final DAN .ass-nya ada ? kalau nggak, caption_url
             # mengarah ke 404 dan reprocess tak pernah memperbaikinya (dianggap complete).
             if final_path.exists() and ass_path.exists():
                 return 1, row["id"], str(final_path), None
@@ -338,10 +338,17 @@ class CaptionStage(Stage):
                 source_abs = source if source.is_absolute() else backend_dir / source
 
                 fonts_opt = ""
-                fonts_dir = backend_dir / "assets" / "fonts"
-                if not (fonts_dir.exists() and any(fonts_dir.iterdir())):
-                    fonts_dir = backend_dir / "fonts"
-                if fonts_dir.exists() and any(fonts_dir.iterdir()):
+                # Pilih dir dengan font TERBANYAK: assets/fonts hanya sisa
+                # Montserrat, pack lengkap (Poppins/Anton/Archivo/Roboto) di
+                # backend/fonts ? kalau prefer assets, preset OFL baru tak
+                # ke-resolve dan libass diam-diam fallback ke font sistem.
+                font_candidates = [backend_dir / "assets" / "fonts", backend_dir / "fonts"]
+                fonts_dir = max(
+                    (d for d in font_candidates if d.exists() and any(d.iterdir())),
+                    key=lambda d: sum(1 for _ in d.glob("*.ttf")),
+                    default=None,
+                )
+                if fonts_dir is not None:
                     rel_fonts = fonts_dir.relative_to(backend_dir).as_posix()
                     fonts_opt = f":fontsdir={rel_fonts}"
 
@@ -362,8 +369,8 @@ class CaptionStage(Stage):
                 logger.warning("caption_skip", clip=clip.name, error=str(e))
                 return 0, row["id"], None, {"clip": clip.name, "error": str(e)}
 
-        # Burn paralel â€” re-encode 1080x1920 itu CPU-bound, 3 worker berasa
-        # 2-3x lebih cepat daripada serial (re-burn 10 klip: ~10mnt â†' ~4mnt).
+        # Burn paralel — re-encode 1080x1920 itu CPU-bound, 3 worker berasa
+        # 2-3x lebih cepat daripada serial (re-burn 10 klip: ~10mnt ?' ~4mnt).
         # Kill-aware: stop_requested dicek sebelum tiap burn + sisa futures
         # dibatalkan pas kill, biar "Hentikan" berhenti beneran (bukan hanya
         # mematikan ffmpeg yang lagi jalan, sisanya tetap encode berjam-jam).

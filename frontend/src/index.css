@@ -56,11 +56,6 @@
   .card-hover {
     @apply transition-all duration-200 hover:border-accent/40 hover:bg-raise/80;
   }
-  .input-glass {
-    @apply w-full rounded-xl border border-edge bg-raise/70 px-4 py-3.5 text-sm text-slate-100
-      placeholder:text-slate-500 outline-none transition-all duration-200
-      focus:border-accent/70 focus:shadow-[0_0_0_3px_rgba(20,184,166,0.15)];
-  }
   .animated-stripes {
     background-image: repeating-linear-gradient(
       -45deg,

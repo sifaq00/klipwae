@@ -3,11 +3,11 @@ from pathlib import Path
 
 import pytest
 
-from stages.reframe import _get_video_info
 from stages.reframe.camera_path import build_camera_path
 from stages.reframe.layout_detector import detect_layout
 from stages.reframe.render import render_center_crop, render_split_screen
 from stages.reframe.speaker_activity import _calc_mar
+from utils.video_info import get_video_info as _get_video_info
 
 TEST_VIDEO = Path(__file__).parent.parent / "data/raw/DkPEGUUnJGE.mp4"
 

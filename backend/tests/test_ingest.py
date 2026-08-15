@@ -96,7 +96,94 @@ def test_fetch_meta_early_quiet_on_failure():
     print("OK test_fetch_meta_early_quiet_on_failure")
 
 
+def test_ingest_skips_metadata_refetch_when_early_fetch_wrote_it(tmp_path, monkeypatch):
+    """#10: yt-dlp 3x per job → 2x. Metadata sudah ditulis early-fetch (POST)
+    → setelah download sukses, refetch TIDAK perlu (hemat 1 call + rate-limit)."""
+    import shutil
+    from stages.ingest import IngestStage
+
+    jid = "skiprefetch"
+    raw = Path("data/raw")
+    raw.mkdir(parents=True, exist_ok=True)
+    f = raw / f"{jid}.mp4"
+    f.write_bytes(b"x" * (1024 * 1024 + 100))
+
+    class FakeConn:
+        def __init__(self, rows):
+            self.rows = iter(rows)
+        def execute(self, sql, *a):
+            return self
+        def fetchone(self):
+            return next(self.rows, None)
+
+    class FakeProc:
+        stdout = iter([])
+        returncode = 0
+        def wait(self): pass
+
+    # call urut: url → meta(downloaded=0) → pasca-mark meta(ada dari early-fetch)
+    rows = [
+        {"url": "https://youtu.be/abc"},
+        {"title": "T", "duration_sec": 60, "downloaded": 0},
+        {"title": "T", "duration_sec": 60},
+    ]
+    db = MagicMock()
+    db.conn = FakeConn(rows)
+
+    called = []
+    monkeypatch.setattr("stages.ingest.subprocess.Popen", lambda *a, **k: FakeProc())
+    monkeypatch.setattr("stages.ingest.get_yt_metadata", lambda *a, **k: called.append(1) or {"title": "T", "duration": 60, "channel": "C"})
+
+    res = IngestStage().run(jid, db, MagicMock())
+    assert res.status.value == "done", res.error
+    assert called == [], f"get_yt_metadata terpanggil {len(called)}x padahal metadata sudah ada"
+    print("OK test_ingest_skips_metadata_refetch_when_early_fetch_wrote_it")
+
+
+def test_ingest_refetches_metadata_when_missing(tmp_path, monkeypatch):
+    """Kebalikan: metadata TIDAK ada (early-fetch gagal) → refetch dipanggil."""
+    from stages.ingest import IngestStage
+
+    jid = "refetchneeded"
+    raw = Path("data/raw")
+    raw.mkdir(parents=True, exist_ok=True)
+    f = raw / f"{jid}.mp4"
+    f.write_bytes(b"x" * (1024 * 1024 + 100))
+
+    class FakeConn:
+        def __init__(self, rows):
+            self.rows = iter(rows)
+        def execute(self, sql, *a):
+            return self
+        def fetchone(self):
+            return next(self.rows, None)
+
+    class FakeProc:
+        stdout = iter([])
+        returncode = 0
+        def wait(self): pass
+
+    rows = [
+        {"url": "https://youtu.be/abc"},
+        {"title": None, "duration_sec": None, "downloaded": 0},
+        {"title": None, "duration_sec": None},
+    ]
+    db = MagicMock()
+    db.conn = FakeConn(rows)
+
+    calls = []
+    monkeypatch.setattr("stages.ingest.subprocess.Popen", lambda *a, **k: FakeProc())
+    monkeypatch.setattr("stages.ingest.get_yt_metadata",
+                        lambda *a, **k: calls.append(1) or {"title": "T", "duration": 60, "channel": "C"})
+
+    res = IngestStage().run(jid, db, MagicMock())
+    assert res.status.value == "done", res.error
+    assert len(calls) == 1, f"refetch harus 1x, dapat {len(calls)}"
+    print("OK test_ingest_refetches_metadata_when_missing")
+
+
 if __name__ == "__main__":
+    from pathlib import Path as _P
     test_extract_video_id()
     test_get_yt_metadata_parses_and_decodes_utf8()
     test_get_yt_metadata_nonzero_rc_returns_none()
@@ -104,4 +191,6 @@ if __name__ == "__main__":
     test_fetch_meta_early_writes_db()
     test_fetch_meta_early_skips_write_when_duration_missing()
     test_fetch_meta_early_quiet_on_failure()
+    test_ingest_skips_metadata_refetch_when_early_fetch_wrote_it(_P("."), None)
+    test_ingest_refetches_metadata_when_missing(_P("."), None)
     print("all ok")

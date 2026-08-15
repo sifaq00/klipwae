@@ -15,8 +15,8 @@ async function handle(res: Response): Promise<any> {
   return res.json();
 }
 
-export async function listJobs(): Promise<Job[]> {
-  return handle(await fetch(`${BASE}/jobs`));
+export async function listJobs(limit = 200): Promise<Job[]> {
+  return handle(await fetch(`${BASE}/jobs?limit=${limit}`));
 }
 
 export async function getSettings(): Promise<{ video_download_resolution?: number }> {
@@ -122,6 +122,10 @@ export async function saveJobCaptionStyle(id: string, style: CaptionStyle): Prom
 
 export async function reburnCaptions(id: string): Promise<void> {
   await handle(await fetch(`${BASE}/jobs/${id}/reburn-captions`, { method: "POST" }));
+}
+
+export async function getReburnStatus(id: string): Promise<{ status: string; alive: boolean }> {
+  return (await handle(await fetch(`${BASE}/jobs/${id}/reburn-status`))) as { status: string; alive: boolean };
 }
 
 export async function getStylePreview(style: CaptionStyle): Promise<string> {

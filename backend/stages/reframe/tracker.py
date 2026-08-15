@@ -106,15 +106,21 @@ def track_persons(video_path: Path, device: str = "cuda", clip_no: str = "",
         if not sampled:
             return []
 
-        # Phase 2: SATU call track untuk semua frame tersampling.
-        # persist=True → ByteTrack nyambungin ID antar frame dalam batch.
-        results = model.track(sampled, persist=True, device=device,
+        # Phase 2: track semua frame tersampling dalam CHUNK 32-frame.
+        # persist=True → ByteTrack nyambungin ID antar chunk (state model
+        # bertahan antar call). Chunking: 200 frame 1080p ≈ 1.2GB di RAM —
+        # diproses 32-frame (~200MB) biar gak OOM di klip panjang.
+        sampled_boxes = []
+        TRACK_CHUNK = 32
+        for k in range(0, len(sampled), TRACK_CHUNK):
+            res = model.track(sampled[k:k + TRACK_CHUNK], persist=True, device=device,
                               conf=0.3, imgsz=imgsz, verbose=False, save=False)
+            sampled_boxes.extend([_extract_boxes(r) for r in res])
+        del sampled  # bebaskan RAM segera
 
         # Phase 3: expand dengan interpolasi linier antar frame sampel.
         out = []
         prefix = f"reframe track {clip_no} " if clip_no else "reframe track "
-        sampled_boxes = [_extract_boxes(res) for res in results]
         num_samples = len(sampled_boxes)
 
         for idx in range(i):

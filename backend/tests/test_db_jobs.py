@@ -258,9 +258,11 @@ def test_ensure_columns_migration():
         conn.commit()
         conn.close()
 
-        # JobDB initialization should trigger _ensure_columns and add missing columns
+        # _ensure_columns now runs in init_db(), not JobDB.__init__
+        from db.jobs import _ensure_columns
         db = JobDB()
         try:
+            _ensure_columns(db.conn)
             cols = {r[1] for r in db.conn.execute("PRAGMA table_info(segments)").fetchall()}
             for expected in ("clip_idx", "caption_text", "hook_score", "virality_reason", "affiliate_caption", "hashtags"):
                 assert expected in cols, f"Column {expected} missing after migration"

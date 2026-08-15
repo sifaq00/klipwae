@@ -1,5 +1,6 @@
+import { useState } from "react";
 import type { Job } from "../types";
-import { fmtDate, fmtDuration, STAGES, statusMeta, renderStageIcon, renderPresetIcon } from "../lib/stages";
+import { fmtDate, fmtDuration, STAGES, STATUS_TO_STAGE, statusMeta, renderStageIcon, renderPresetIcon } from "../lib/stages";
 import { PRESET_OPTIONS } from "./UrlInput";
 
 interface Props {
@@ -9,18 +10,8 @@ interface Props {
   onDelete: (job: Job) => void;
 }
 
-// status backend ("downloading") → key stage ("ingest"). Tanpa map ini
-// findIndex selalu -1 → bar 0% tak terlihat selama job jalan.
-const STATUS_TO_STAGE: Record<string, string> = {
-  downloading: "ingest",
-  transcribing: "transcribe",
-  analyzing: "analyze",
-  clipping: "clip",
-  reframing: "reframe",
-  captioning: "caption",
-};
-
 export function JobsView({ jobs, activeJob, onOpen, onDelete }: Props) {
+  const [visible, setVisible] = useState(50);
   const running = jobs.filter((j) => j.running).length;
   const done = jobs.filter((j) => j.status === "done").length;
   const failed = jobs.filter((j) => j.status === "failed").length;
@@ -65,9 +56,17 @@ export function JobsView({ jobs, activeJob, onOpen, onDelete }: Props) {
         </div>
       ) : (
         <div className="space-y-3">
-          {jobs.map((j, i) => (
+          {jobs.slice(0, visible).map((j, i) => (
             <JobCard key={j.id} job={j} index={i} active={j.id === activeJob} onOpen={() => onOpen(j.id)} onDelete={() => onDelete(j)} />
           ))}
+          {jobs.length > visible && (
+            <button
+              className="w-full rounded-xl border border-edge bg-raise/40 py-3 text-xs font-semibold text-slate-400 transition-colors hover:border-accent/40 hover:text-cyan-300"
+              onClick={() => setVisible((v) => v + 50)}
+            >
+              Tampilkan lebih banyak ({jobs.length - visible} tersisa)
+            </button>
+          )}
         </div>
       )}
     </div>
@@ -115,12 +114,12 @@ function JobCard({ job, index, active, onOpen, onDelete }: { job: Job; index: nu
               {job.channel && (
                 <>
                   <span className="text-slate-300 font-medium truncate max-w-[180px]">{job.channel}</span>
-                  <span className="text-slate-600">·</span>
+                  <span className="text-slate-600">Â·</span>
                 </>
               )}
               <span className="font-mono">{job.id}</span>
-              <span>· {fmtDate(job.created_at)}</span>
-              <span>· {fmtDuration(job.duration_sec)}</span>
+              <span>Â· {fmtDate(job.created_at)}</span>
+              <span>Â· {fmtDuration(job.duration_sec)}</span>
               <span className="chip border border-slate-700/80 bg-slate-800/80 text-slate-300 py-0 px-1.5 text-[10px] font-medium inline-flex items-center gap-1" title={presetMeta.label}>
                 {renderPresetIcon(job.preset || "affiliate", "h-2.5 w-2.5 text-cyan-400")}
                 <span>{presetMeta.shortLabel}</span>
@@ -149,7 +148,7 @@ function JobCard({ job, index, active, onOpen, onDelete }: { job: Job; index: nu
             </div>
           </div>
 
-          {/* ── 6-Segment Pipeline Progress Rail ── */}
+          {/* â”€â”€ 6-Segment Pipeline Progress Rail â”€â”€ */}
           <div className="flex h-2.5 w-full gap-1.5 pt-1">
             {STAGES.map((s, i) => {
               const isPassed = job.status === "done" || (stageIdx >= 0 && i < stageIdx);

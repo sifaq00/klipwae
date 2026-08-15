@@ -50,7 +50,7 @@ def split_segment_ranges(start: float, end: float, words: list[dict],
 
     Potong di jeda bicara (gap >= 0.6s antar kata) dalam jendela 15 detik
     terakhir dari tiap window. Kalau tidak ada jeda bagus, potong tepat di
-    max_sec. Deterministik â€” retry menghasilkan chunk yang sama.
+    max_sec. Deterministik — retry menghasilkan chunk yang sama.
     """
     if end - start <= max_sec:
         return [(start, end)]
@@ -82,11 +82,11 @@ def split_segment_ranges(start: float, end: float, words: list[dict],
 
 def align_boundary(words: list[dict], sec: float, direction: str,
                    window: float = 3.0, min_gap: float = 0.5) -> float:
-    """Geser boundary potongan ke awal kalimat (awal kata setelah jeda ≥ min_gap).
+    """Geser boundary potongan ke awal kalimat (awal kata setelah jeda = min_gap).
 
     direction="start": mundur ke jeda TERAKHIR dalam [sec-window, sec).
     direction="end": maju ke jeda PERTAMA dalam (sec, sec+window].
-    Tidak ada jeda → return sec. Kata kosong → return sec.
+    Tidak ada jeda ? return sec. Kata kosong ? return sec.
     """
     if not words:
         return sec
@@ -98,7 +98,7 @@ def align_boundary(words: list[dict], sec: float, direction: str,
             continue
         if direction == "start":
             if sec - window <= nxt["start"] < sec:
-                best = nxt["start"]  # overwrite → ambil jeda terakhir
+                best = nxt["start"]  # overwrite ? ambil jeda terakhir
         else:
             if sec < nxt["start"] <= sec + window:
                 return nxt["start"]  # jeda pertama setelah sec
@@ -148,7 +148,7 @@ class ClipStage(Stage):
         clips_dir = Path("data/clips_raw")
         clips_dir.mkdir(parents=True, exist_ok=True)
 
-        # Word timestamps untuk split di jeda bicara (opsional â€” kalau
+        # Word timestamps untuk split di jeda bicara (opsional — kalau
         # transcript hilang, split tetap jalan di batas max_sec)
         words = _load_words(job_id)
 
@@ -176,7 +176,7 @@ class ClipStage(Stage):
                 clip_path = self._clip_path(job_id, clip_idx, seg)
                 if clip_path.exists():
                     # File sudah dibuat attempt sebelumnya (atau row DB lewat
-                    # karena analyze re-run) — repair: upsert, kalau tidak
+                    # karena analyze re-run) ? repair: upsert, kalau tidak
                     # is_complete false selamanya + segmen hilang dari UI.
                     db.upsert_clip_segment(
                         job_id, clip_idx,
@@ -191,7 +191,7 @@ class ClipStage(Stage):
                 buf = CLIP_BUFFER_SEC if (first or last) else SPLIT_BUFFER_SEC
                 work.append((seg, clip_idx, s, e, clip_path, buf))
 
-        # ffmpeg per klip independen → jalan paralel (bukan guillotine 1-by-1)
+        # ffmpeg per klip independen ? jalan paralel (bukan guillotine 1-by-1)
         def _do(item):
             if runtime.stop_requested(job_id):
                 return None
@@ -222,7 +222,7 @@ class ClipStage(Stage):
                     done_chunks += 1
                     print(f"    clip {done_chunks}/{total_chunks}")
                 except Exception as e:
-                    # Plan Section 11: timestamp invalid → skip segmen (bukan gagalkan job).
+                    # Plan Section 11: timestamp invalid ? skip segmen (bukan gagalkan job).
                     # TAPI error DB = bug sistemik, jangan ditelan: fail stage supaya
                     # retry benar-benar memperbaiki state (bukan artefak yatim).
                     if isinstance(e, sqlite3.Error):

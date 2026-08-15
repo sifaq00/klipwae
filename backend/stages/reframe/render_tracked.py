@@ -10,7 +10,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from utils.ffmpeg_helpers import run_ffmpeg
+from utils.ffmpeg_helpers import run_ffmpeg, video_encode_args
 
 CONF_MIN = 0.35        # box di bawah confidence ini diabaikan
 
@@ -86,7 +86,7 @@ def render_tracked(
          # tag smpte170m (BT.601) biar player decode benar.
          "-vf", "format=yuv420p",
          "-colorspace", "smpte170m", "-color_primaries", "smpte170m", "-color_trc", "smpte170m",
-         "-c:v", "h264_nvenc", "-preset", "p5", "-cq", "23", "-an",
+         *video_encode_args(), "-an",
          str(output_path)],
         stdin=subprocess.PIPE, stderr=subprocess.DEVNULL,
     )
@@ -196,7 +196,7 @@ def render_tracked(
     cap.release()
     runtime.clear_proc(proc)
     if proc.returncode != 0:
-        # Abort karena kill juga sampai sini � jangan buat fallback/render lanjut
+        # Abort karena kill juga sampai sini — jangan buat fallback/render lanjut
         return False
 
     # Mux audio dari source

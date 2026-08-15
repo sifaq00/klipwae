@@ -1,30 +1,7 @@
-﻿import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { CaptionStyle, FontItem } from "../types";
+import { defaultStyle } from "../lib/captionDefaults";
 import { getStylePreview, listFonts } from "../lib/api";
-
-const DEFAULTS: CaptionStyle = {
-  enabled: true,
-  font: "Montserrat Black",
-  size: 96,
-  bold: true,
-  italic: false,
-  uppercase: false,
-  pop: false,
-  bounce: false,
-  auto_emoji: true,
-  spacing: 0,
-  line_spacing: 0,
-  text_color: "#FFFFFF",
-  highlight_color: "#FFFF00",
-  outline: 6,
-  outline_color: "#000000",
-  border_style: "outline",
-  shadow: 3,
-  shadow_color: "#000000",
-  position: "bottom",
-  margin_v: 240,
-  style: "highlight",
-};
 
 export const DEFAULT_VIRAL_FONTS: FontItem[] = [
   { name: "Montserrat Black", label: "Montserrat Black", tag: "Viral TikTok", sample: "AA" },
@@ -204,9 +181,7 @@ function presetNameOf(s: CaptionStyle): string | null {
   return null;
 }
 
-export function defaultStyle(): CaptionStyle {
-  return { ...DEFAULTS };
-}
+
 
 interface Props {
   value: CaptionStyle;
@@ -235,7 +210,7 @@ export function StyleEditor({ value, onChange, compact, previewSide = "bottom" }
       .catch(() => setFonts([]));
   }, []);
 
-  // Preview REAL via libass (engine sama dengan burn-in) â€” debounce 500ms
+  // Preview REAL via libass (engine sama dengan burn-in) — debounce 500ms
   useEffect(() => {
     if (previewTimer.current) window.clearTimeout(previewTimer.current);
     previewTimer.current = window.setTimeout(() => {
@@ -278,7 +253,7 @@ export function StyleEditor({ value, onChange, compact, previewSide = "bottom" }
           <p className="text-[10px] text-slate-500">
             {value.enabled
               ? "Subtitle karaoke di-burn ke klip final"
-              : "Stage subtitle di-skip â€” klip tetap jadi tanpa teks"}
+              : "Stage subtitle di-skip — klip tetap jadi tanpa teks"}
           </p>
         </div>
         <span
@@ -447,7 +422,7 @@ export function StyleEditor({ value, onChange, compact, previewSide = "bottom" }
                     autoFocus
                     value={fontQuery}
                     onChange={(e) => setFontQuery(e.target.value)}
-                    placeholder="Cari font sistemâ€¦"
+                    placeholder="Cari font sistem…"
                     className="w-full rounded-lg border border-edge bg-raise py-1.5 pl-8 pr-2 text-xs outline-none focus:border-accent/60"
                   />
                 </div>
@@ -664,12 +639,12 @@ export function StyleEditor({ value, onChange, compact, previewSide = "bottom" }
           <img src={previewUrl} alt="Preview subtitle" className="h-full w-full object-cover" />
         ) : (
           <div className="flex h-full items-center justify-center text-xs text-slate-600">
-            {previewBusy ? "Merenderâ€¦" : "â€”"}
+            {previewBusy ? "Merender…" : "—"}
           </div>
         )}
       </div>
       <p className="mt-1 text-[9px] leading-snug text-slate-600">
-        â€” dirender ffmpeg/libass, sama persis dengan hasil burn-in
+        — dirender ffmpeg/libass, sama persis dengan hasil burn-in
       </p>
     </div>
   );

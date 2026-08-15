@@ -1,9 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { CaptionStyle, Job, Segment } from "../types";
-import { getJobCaptionStyle, getSegments, killJob, markSegment, rejectSegment, reburnCaptions, retryJob, saveJobCaptionStyle, streamLog } from "../lib/api";
-import { fmtDuration, STAGES, statusMeta, renderStageIcon } from "../lib/stages";
+import { getJobCaptionStyle, getReburnStatus, getSegments, killJob, markSegment, rejectSegment, reburnCaptions, retryJob, saveJobCaptionStyle, streamLog } from "../lib/api";
+import { formatCopyText } from "../lib/clipboard";
+import { fmtDuration, STAGES, STATUS_TO_STAGE, statusMeta, renderStageIcon } from "../lib/stages";
+import { useConfirm } from "./ConfirmDialog";
 import { SegmentCard } from "./SegmentCard";
-import { StyleEditor, defaultStyle } from "./StyleEditor";
+import { defaultStyle } from "../lib/captionDefaults";
+import { lazy, Suspense } from "react";
+const StyleEditor = lazy(() => import("./StyleEditor").then((m) => ({ default: m.StyleEditor })));
 
 interface Props {
   job: Job;
@@ -24,6 +28,7 @@ const FILTERS: { key: SegFilter; label: string }[] = [
 ];
 
 export function JobDetail({ job, onBack, onRefresh, onRejected, onDelete, videoRes }: Props) {
+  const { confirm, dialog: confirmDialog } = useConfirm();
   const [logs, setLogs] = useState<string[]>([]);
   const [segments, setSegments] = useState<Segment[]>([]);
   const [loadingSegs, setLoadingSegs] = useState(true);
@@ -37,7 +42,13 @@ export function JobDetail({ job, onBack, onRefresh, onRejected, onDelete, videoR
   const [reburnDone, setReburnDone] = useState(0);
   const [reburnTotal, setReburnTotal] = useState(0);
   const logBox = useRef<HTMLDivElement>(null);
+  const reburnPollRef = useRef<number | null>(null);
   const [atBottom, setAtBottom] = useState(true);
+
+  // B10: cleanup reburn polling on unmount
+  useEffect(() => () => {
+    if (reburnPollRef.current) window.clearInterval(reburnPollRef.current);
+  }, []);
 
   const onLogScroll = () => {
     const el = logBox.current;
@@ -65,9 +76,26 @@ export function JobDetail({ job, onBack, onRefresh, onRejected, onDelete, videoR
     let since = 0; // cursor baris; reconnect lanjut dari sini (tidak duplikat)
 
     const connect = () => {
+      const logBuffer: string[] = [];
+      let flushTimer: number | null = null;
+      const flushLogs = () => {
+        if (logBuffer.length > 0) {
+          const batch = logBuffer.splice(0);
+          setLogs((p) => [...p, ...batch]);
+        }
+        flushTimer = null;
+      };
+      const clearFlush = () => {
+        if (flushTimer) {
+          window.clearTimeout(flushTimer);
+          flushTimer = null;
+        }
+        flushLogs(); // flush batch tersisa biar gak hilang
+      };
       es = streamLog(job.id, (line) => {
         since += 1;
-        setLogs((p) => [...p, line]);
+        logBuffer.push(line);
+        if (!flushTimer) flushTimer = window.setTimeout(flushLogs, 100);
         const p = parseProgress(line);
         if (p) setProgress(p);
       }, () => {
@@ -76,16 +104,19 @@ export function JobDetail({ job, onBack, onRefresh, onRejected, onDelete, videoR
         getSegments(job.id).then(setSegments).catch(() => {});
         onRefresh();
         if (job.running) {
+          clearFlush();
           since = 0;
           es = null;
           connect();
           return;
         }
         closed = true;
+        clearFlush();
       }, since);
       es.onerror = () => {
         es?.close();
         es = null;
+        clearFlush();
         if (!closed && !job.running) return; // job kelar, stop reconnect
         if (!closed) {
           retry = window.setTimeout(connect, 2500);
@@ -161,45 +192,50 @@ export function JobDetail({ job, onBack, onRefresh, onRejected, onDelete, videoR
     setReburning(true);
     setReburnDone(0);
     setReburnTotal(segments.length);
-    // Poll progres per klip: caption_url cuma ke-set kalau file final BENERAN
-    // ada (final dihapus saat re-burn mulai → mulai 0, naik tiap klip kelar)
-    const poll = window.setInterval(async () => {
+    // #20: reburn NON-blocking (backend return cepat). Poll status + progres
+    // per klip (caption_url ke-set cuma kalau file final BENERAN ada).
+    const poll = () => window.setInterval(async () => {
       try {
-        const s = await getSegments(job.id);
+        const [s, st] = await Promise.all([getSegments(job.id), getReburnStatus(job.id)]);
         setReburnTotal(s.length);
         setReburnDone(s.filter((x) => x.caption_url).length);
-      } catch {
-        /* ignore */
-      }
+        if (st.status === "done" || st.status === "killed" || st.status === "skipped" || st.status === "failed") {
+          if (reburnPollRef.current) window.clearInterval(reburnPollRef.current);
+          reburnPollRef.current = null;
+          setReburning(false);
+          setStyleOpen(false);
+          setSegments(s);
+          showToast(st.status === "done" ? "Subtitle di-re-burn dengan gaya baru"
+            : st.status === "skipped" ? "Subtitle nonaktif — tidak ada yang di-burn"
+            : "Reburn dihentikan");
+        }
+      } catch { /* ignore */ }
     }, 2000);
     try {
       await saveJobCaptionStyle(job.id, style);
       await reburnCaptions(job.id);
-      showToast("Subtitle di-re-burn dengan gaya baru");
-      getSegments(job.id).then(setSegments).catch(() => {});
+      reburnPollRef.current = poll();
     } catch {
       showToast("Gagal re-burn subtitle");
-    } finally {
-      window.clearInterval(poll);
       setReburning(false);
       setStyleOpen(false);
     }
   };
 
   const handleKill = async () => {
-    if (!confirm("Hentikan job ini? Proses yang sedang berjalan akan dimatikan.")) return;
+    if (!(await confirm("Hentikan job ini? Proses yang sedang berjalan akan dimatikan."))) return;
     try { await killJob(job.id); showToast("Job dihentikan"); } catch { /* ignore */ }
     onRefresh();
   };
 
   const handleRetry = async () => {
-    if (!confirm("Proses ulang pipeline? Stage yang sudah selesai akan di-skip; file yang kurang di-repair.")) return;
+    if (!(await confirm("Proses ulang pipeline? Stage yang sudah selesai akan di-skip; file yang kurang di-repair."))) return;
     try { await retryJob(job.id); showToast("Job dilanjutkan"); } catch { /* ignore */ }
     onRefresh();
   };
 
   const handleReject = async (seg: Segment) => {
-    if (!confirm(`Buang klip "${seg.product_mentioned || seg.topic || "tanpa label"}"? File akan dihapus.`)) return;
+    if (!(await confirm(`Buang klip "${seg.product_mentioned || seg.topic || "tanpa label"}"? File akan dihapus.`))) return;
     try {
       await rejectSegment(seg.id);
       setSegments((prev) => prev.filter((s) => s.id !== seg.id));
@@ -410,7 +446,7 @@ export function JobDetail({ job, onBack, onRefresh, onRejected, onDelete, videoR
                 ) : (
                   logs.map((line, i) => (
                     <div key={i} className={lineColor(line)}>
-                      {line.trimStart().replace(/^\[(download|youtube|info|MergeMux|ExtractAudio)\]/g, (m) => m)}
+                      {line.trimStart()}
                     </div>
                   ))
                 )}
@@ -447,7 +483,9 @@ export function JobDetail({ job, onBack, onRefresh, onRejected, onDelete, videoR
                 </svg>
               </button>
             </div>
-            <StyleEditor value={style} onChange={setStyle} previewSide="right" />
+            <Suspense fallback={<div className="py-8 text-center text-xs text-slate-500">Muat editor gaya…</div>}>
+              <StyleEditor value={style} onChange={setStyle} previewSide="right" />
+            </Suspense>
             <div className="mt-5 flex flex-wrap items-center gap-3 border-t border-edge pt-4">
               <button
                 className="btn-primary px-6 py-2.5 text-sm disabled:opacity-50"
@@ -482,6 +520,7 @@ export function JobDetail({ job, onBack, onRefresh, onRejected, onDelete, videoR
           </div>
         </div>
       )}
+      {confirmDialog}
     </div>
   );
 }
@@ -494,7 +533,9 @@ function filtered(segs: Segment[], f: SegFilter): Segment[] {
 }
 
 function stageLabel(key: string): string {
-  return STAGES.find((s) => s.key === key)?.label ?? key;
+  // #16: status backend ("downloading") → key stage ("ingest") → label
+  const k = STATUS_TO_STAGE[key] ?? key;
+  return STAGES.find((s) => s.key === k)?.label ?? key;
 }
 
 function PipelineRail({ stages, jobStatus, videoRes }: { stages: Job["stages"]; jobStatus: string; videoRes?: number }) {
@@ -585,11 +626,7 @@ function PlayerModal({ seg, index, total, onClose, onPrev, onNext, onToggle, onR
   };
 
   const handleCopyCaption = async () => {
-    const textToCopy = seg.affiliate_caption
-      ? (seg.hashtags && seg.hashtags.length > 0
-          ? `${seg.affiliate_caption}\n\n${seg.hashtags.join(" ")}`
-          : seg.affiliate_caption)
-      : (seg.caption_text || "");
+    const textToCopy = formatCopyText(seg);
     if (!textToCopy) return;
     try {
       await navigator.clipboard.writeText(textToCopy);
@@ -610,7 +647,7 @@ function PlayerModal({ seg, index, total, onClose, onPrev, onNext, onToggle, onR
             src={seg.preview_url ?? undefined}
             controls
             autoPlay
-            className="max-h-[76vh] w-auto rounded-lg border border-edge/50 bg-black shadow-2xl"
+            className="max-h-[52vh] w-auto rounded-lg border border-edge/50 bg-black shadow-2xl sm:max-h-[76vh]"
             style={{ aspectRatio: "9/16" }}
           />
           <div className="absolute left-2.5 top-2.5 flex flex-wrap items-center gap-1.5 max-w-[65%]">
@@ -645,6 +682,8 @@ function PlayerModal({ seg, index, total, onClose, onPrev, onNext, onToggle, onR
           <span className="mr-1.5 font-mono text-[11px] text-slate-500">{index + 1}/{total}</span>
           <button
             onClick={() => onToggle("reviewed")}
+            role="switch"
+            aria-checked={!!seg.reviewed}
             className={`flex-1 flex items-center justify-center gap-1 rounded-lg border px-2 py-1.5 text-[11px] font-semibold transition-all active:scale-[0.97] ${
               seg.reviewed
                 ? "border-emerald-500/50 bg-emerald-500/15 text-emerald-300"
@@ -660,6 +699,8 @@ function PlayerModal({ seg, index, total, onClose, onPrev, onNext, onToggle, onR
           </button>
           <button
             onClick={() => onToggle("posted")}
+            role="switch"
+            aria-checked={!!seg.posted}
             className={`flex-1 flex items-center justify-center gap-1 rounded-lg border px-2 py-1.5 text-[11px] font-semibold transition-all active:scale-[0.97] ${
               seg.posted
                 ? "border-gold/60 bg-gold/15 text-gold"

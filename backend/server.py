@@ -20,6 +20,7 @@ import runtime
 from config import Settings
 from db.jobs import JobDB, init_db
 from orchestrator import run_pipeline
+from stages.base import StageStatus
 from stages.ingest import extract_video_id
 from utils.url_validator import is_valid_youtube_url
 
@@ -56,7 +57,7 @@ def _setup() -> Settings:
     )
 
     root = logging.getLogger()
-    # _setup dipanggil per request (create_job/retry) â€” jangan nambah handler
+    # _setup dipanggil per request (create_job/retry) — jangan nambah handler
     # baru tiap kali, nanti baris log ke-duplikat & handler bocor.
     if not any(isinstance(h, logging.handlers.RotatingFileHandler) for h in root.handlers):
         root.addHandler(file_handler)
@@ -69,7 +70,7 @@ JOB_RUNNERS: dict[str, "JobRunner"] = {}
 
 def _cleanup_stale_files():
     """Retention: buang artefak yang lewat STORAGE_RETENTION_DAYS.
-    Raw video sekarang DISIMPAN (reprocess gak download ulang) â€” tapi tidak
+    Raw video sekarang DISIMPAN (reprocess gak download ulang) — tapi tidak
     boleh menumpuk selamanya: hapus yang mtime-nya lebih tua dari retention."""
     import time as _t
     try:
@@ -90,7 +91,7 @@ def _cleanup_stale_files():
         pass
 _REBURN: dict[str, threading.Thread] = {}
 _REBURN_STATUS: dict[str, str] = {}
-# Counter log ABSOLUT per job â€” PERSISTEN antar retry/runner. Runner baru
+# Counter log ABSOLUT per job — PERSISTEN antar retry/runner. Runner baru
 # me-reset buffer, tapi klien SSE pakai sejak absolut: tanpa ini, retry
 # langsung bikin SSE klien beku (sejak nembus buffer baru yang kosong).
 _JOB_LOG_SEQ: dict[str, int] = {}
@@ -104,7 +105,7 @@ def _job_log_path(job_id: str) -> Path:
 
 
 class _LogStream(io.TextIOBase):
-    """Stream per thread job â€” progress whisper/yt-dlp/stages masuk ke
+    """Stream per thread job — progress whisper/yt-dlp/stages masuk ke
     SSE + file log job-nya (bukan hilang di console)."""
 
     def __init__(self, log):
@@ -127,7 +128,7 @@ class _LogStream(io.TextIOBase):
 
 
 class _ThreadRoutedStdout(io.TextIOBase):
-    """sys.stdout global â€” tapi route per-thread ke log job masing-masing.
+    """sys.stdout global — tapi route per-thread ke log job masing-masing.
     Tanpa ini 2 job jalan bareng race: redirect_stdout menimpa sys.stdout
     global, print job A bocor ke buffer/SSE job B (progress bar saling
     tumpang tindih). Thread tanpa stream jatuh ke console."""
@@ -162,7 +163,7 @@ _STDOUT_PROXY = None
 
 
 class JobRunner:
-    _thread_streams: dict[int, _LogStream] = {}  # thread ident â†’ stream job-nya
+    _thread_streams: dict[int, _LogStream] = {}  # thread ident → stream job-nya
 
     def __init__(self, job_id: str, url: str, preset: str = "affiliate"):
         self.job_id = job_id
@@ -194,7 +195,7 @@ class JobRunner:
             db.close()
             runtime.clear_job(self.job_id)
             runtime.unregister(self.thread.ident)
-            # Runner selesai (done/failed/killed) â€” pop dari registry biar tidak
+            # Runner selesai (done/failed/killed) — pop dari registry biar tidak
             # menumpuk: log job tetap kebaca via file (stream_log fallback disk).
             if JOB_RUNNERS.get(self.job_id) is self:
                 JOB_RUNNERS.pop(self.job_id, None)
@@ -203,13 +204,13 @@ class JobRunner:
 
     def _log(self, msg: str):
         # Lock: _log dipanggil dari banyak worker thread (clip/caption pool)
-        # bareng â†’ get+set seq tak atomik, dua baris bisa share seq/terbalik.
+        # bareng → get+set seq tak atomik, dua baris bisa share seq/terbalik.
         with _JOB_LOG_LOCK:
             seq = _JOB_LOG_SEQ.get(self.job_id, 0) + 1
             _JOB_LOG_SEQ[self.job_id] = seq
             self.log_buffer.append((seq, msg))
         self._log_event.set()
-        # Persist per job â€” log tetap kebaca setelah server restart
+        # Persist per job — log tetap kebaca setelah server restart
         try:
             JOB_LOG_DIR.mkdir(parents=True, exist_ok=True)
             with open(_job_log_path(self.job_id), "a", encoding="utf-8") as f:
@@ -219,10 +220,10 @@ class JobRunner:
 
     def kill(self):
         # Stop thread job INI + terminate semua subprocess-nya (termasuk
-        # ffmpeg worker) â€” job lain yang berjalan bareng tidak tersentuh.
+        # ffmpeg worker) — job lain yang berjalan bareng tidak tersentuh.
         if self.thread is not None and self.thread.ident:
             runtime.kill_job(self.job_id, self.thread.ident)
-        # Jangan timpa status FINAL (done/failed) yang sudah ditulis pipeline â€”
+        # Jangan timpa status FINAL (done/failed) yang sudah ditulis pipeline —
         # kill setelah selesai = no-op status (window: pipeline belum set _done
         # tapi sudah nulis status final; kecil & percaya pada final).
         if not self._done.is_set():
@@ -243,8 +244,8 @@ class JobRunner:
     def recent_logs(self, since: int = 0) -> list[str]:
         """Baris sejak index ABSOLUT `since` (exclusive). Buffer cuma 500
         terakhir, index persisten per job lintas retry/runner. Klien yang
-        ketinggalan jauh (since di bawah window) di-replay seluruh buffer â€”
-        dulu slice kosong â†’ SSE beku diam-diam."""
+        ketinggalan jauh (since di bawah window) di-replay seluruh buffer —
+        dulu slice kosong → SSE beku diam-diam."""
         buf = list(self.log_buffer)
         if not buf:
             return []
@@ -253,7 +254,7 @@ class JobRunner:
         return [m for s, m in buf if s > since]
 
 
-# â”€â”€â”€ Lifespan â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ─── Lifespan ────────────────────────────────────────────────────────────────
 
 
 @asynccontextmanager
@@ -266,7 +267,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Auto-Clipper API", lifespan=lifespan)
-# Self-use tool: hanya izinkan origin frontend dev. Jangan "*" â€” API ini
+# Self-use tool: hanya izinkan origin frontend dev. Jangan "*" — API ini
 # bisa menjalankan job berat & menulis .env.
 app.add_middleware(
     CORSMiddleware,
@@ -278,7 +279,7 @@ app.add_middleware(
 
 @app.middleware("http")
 async def no_store(request, call_next):
-    """API selalu fresh â€” tanpa ini Chrome heuristik-cache GET segments,
+    """API selalu fresh — tanpa ini Chrome heuristik-cache GET segments,
     polling progress re-burn nemu data basi (0/10 terus sampai cache expire)."""
     response = await call_next(request)
     if request.url.path.startswith("/api/"):
@@ -287,7 +288,7 @@ async def no_store(request, call_next):
 app.mount("/clips", StaticFiles(directory=str(DATA_DIR)), name="clips")
 
 
-# â”€â”€â”€ Models â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ─── Models ──────────────────────────────────────────────────────────────────
 
 
 class JobCreate(BaseModel):
@@ -304,7 +305,7 @@ class SettingsUpdate(BaseModel):
     google_api_key: str | None = None
 
 
-# ─── Helpers ─────────────────────────────────────────────────────────────
+# --- Helpers -------------------------------------------------------------
 
 
 def _job_json(job: dict) -> dict:
@@ -313,7 +314,7 @@ def _job_json(job: dict) -> dict:
     return job
 
 
-# ─── Endpoints ───────────────────────────────────────────────────────────
+# --- Endpoints -----------------------------------------------------------
 
 
 @app.get("/api/health")
@@ -343,7 +344,7 @@ async def create_job(body: JobCreate):
     runner = JobRunner(video_id, body.url, preset=preset)
     JOB_RUNNERS[video_id] = runner
     # INSERT dulu: _fetch_meta_early (UPDATE) tak boleh kalah sama INSERT
-    # runner thread → kalau 0 rows, title awal diam-diam hilang.
+    # runner thread ? kalau 0 rows, title awal diam-diam hilang.
     db0 = JobDB()
     try:
         db0.create_job(video_id, body.url, preset=preset)
@@ -383,12 +384,13 @@ def _fetch_meta_early(job_id: str, url: str):
 
 
 @app.get("/api/jobs")
-async def list_jobs():
+async def list_jobs(limit: int = 50, offset: int = 0):
     db = JobDB()
     try:
         rows = db.conn.execute(
             "SELECT j.*, (SELECT COUNT(*) FROM segments s WHERE s.job_id = j.id) AS segment_count "
-            "FROM jobs j ORDER BY j.created_at DESC LIMIT 50"
+            "FROM jobs j ORDER BY j.created_at DESC LIMIT ? OFFSET ?",
+            (min(max(limit, 1), 200), max(offset, 0)),
         ).fetchall()
         result = []
         for r in rows:
@@ -444,10 +446,11 @@ async def delete_job(job_id: str):
 
     # Reburn masih jalan untuk job ini? terminate + tunggu berhenti dulu
     reburn = _REBURN.get(job_id)
-    if reburn and reburn.is_alive:
+    if reburn and reburn.is_alive():
         runtime.kill_job(job_id, reburn.ident)
         await _join_quiet(reburn)
     _REBURN.pop(job_id, None)
+    _REBURN_STATUS.pop(job_id, None)
 
     db = JobDB()
     try:
@@ -461,7 +464,7 @@ async def delete_job(job_id: str):
 
     # Hapus file: raw, transcript, segments, clips (raw+reframed), final, thumb, ass, log.
     # Pass kedua: kalau thread masih hidup setelah join(10) (mis. whisper), dia bisa
-    # menulis ulang file yang baru dihapus â€” tunggu dia mati lalu hapus lagi.
+    # menulis ulang file yang baru dihapus — tunggu dia mati lalu hapus lagi.
     def _delete_files() -> int:
         removed = 0
         patterns = [
@@ -484,10 +487,10 @@ async def delete_job(job_id: str):
         return removed
 
     removed = _delete_files()
-    if (runner and runner.is_alive) or (reburn and reburn.is_alive):
+    if (runner and runner.is_alive) or (reburn and reburn.is_alive()):
         for t in (runner, reburn):
-            if t and t.is_alive:
-                thread = t.thread if hasattr(t, "thread") and t.thread else t
+            thread = t.thread if hasattr(t, "thread") and t.thread else t
+            if thread and thread.is_alive():
                 await _join_quiet(thread)
         removed += _delete_files()
     JOB_RUNNERS.pop(job_id, None)
@@ -585,7 +588,7 @@ async def get_segments(job_id: str):
 
 
 def _resolve_clip_path(clip_path: str) -> Path:
-    """clip_path di DB relatif terhadap backend dir â€” normalisasi ke absolut
+    """clip_path di DB relatif terhadap backend dir — normalisasi ke absolut
     supaya cek file & relative_to(DATA_DIR) konsisten."""
     clip = Path(clip_path)
     if not clip.is_absolute():
@@ -636,7 +639,7 @@ async def reject_segment(segment_id: int):
     """Buang klip: hapus row segmen + semua file terkait (raw, reframed, final, .ass)."""
     db = JobDB()
     try:
-        # Cek aktivitas DULU â€” kalau job masih proses, jangan hapus apa pun
+        # Cek aktivitas DULU — kalau job masih proses, jangan hapus apa pun
         found = db.conn.execute(
             "SELECT job_id FROM segments WHERE id=?", (segment_id,)
         ).fetchone()
@@ -645,8 +648,8 @@ async def reject_segment(segment_id: int):
         jid = found["job_id"]
         runner = JOB_RUNNERS.get(jid)
         reburn = _REBURN.get(jid)
-        if (runner and runner.is_alive) or (reburn and reburn.is_alive):
-            raise HTTPException(409, "Job masih memproses â€” tunggu selesai dulu")
+        if (runner and runner.is_alive) or (reburn and reburn.is_alive()):
+            raise HTTPException(409, "Job masih memproses — tunggu selesai dulu")
         row = db.delete_segment(segment_id)
     finally:
         db.close()
@@ -671,7 +674,7 @@ def _segment_files(seg: dict) -> list[Path]:
         final = Path(__file__).parent / "data" / "clips_final" / clip.name
         files.append(final)
         files.append(Path(__file__).parent / "data" / "clips_final" / Path(clip.name).with_suffix(".ass"))
-        files.append(final.with_suffix(".jpg"))  # thumbnail dari _make_thumb â€” kalau tidak, yatim
+        files.append(final.with_suffix(".jpg"))  # thumbnail dari _make_thumb — kalau tidak, yatim
     return files
 
 
@@ -732,7 +735,7 @@ def _set_env(path: Path, key: str, value: str):
     path.write_text("\n".join(lines) + "\n")
 
 
-# â”€â”€â”€ Subtitle style â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ─── Subtitle style ────────────────────────────────────────────────
 
 
 FONT_DIRS = [
@@ -745,7 +748,7 @@ _fonts_cache: list[str] | None = None
 
 
 def _font_families() -> list[str]:
-    """Scan font terinstall + bundle â†’ daftar nama family.
+    """Scan font terinstall + bundle → daftar nama family.
 
     Bundle project: nameID1 sudah dinormalisasi (mis. "Poppins ExtraBold").
     Sistem: nameID 16 dulu (variable font kadang nameID1 = "Montserrat Thin").
@@ -787,8 +790,8 @@ async def list_fonts():
 
 @app.post("/api/caption-style/preview")
 async def caption_style_preview(body: dict):
-    """Render preview REAL via libass â€” engine yang sama dengan burn-in.
-    Gambar contoh 1080x1920 dengan gaya yang diminta â†’ URL gambar."""
+    """Render preview REAL via libass — engine yang sama dengan burn-in.
+    Gambar contoh 1080x1920 dengan gaya yang diminta → URL gambar."""
     import time as _time
     from stages.caption import generate_ass
     from utils.caption_style import DEFAULT_STYLE
@@ -894,7 +897,7 @@ async def reburn_captions(job_id: str):
     """Regenerate subtitle dengan style terbaru + burn ulang semua klip final."""
     import json as _json
 
-    if job_id in _REBURN and _REBURN[job_id].is_alive:
+    if job_id in _REBURN and _REBURN[job_id].is_alive():
         raise HTTPException(409, "Reburn sudah berjalan untuk episode ini")
 
     def _do():
@@ -917,7 +920,7 @@ async def reburn_captions(job_id: str):
             db.close()
 
     def _wrapped():
-        runtime.set_job(job_id)  # ffmpeg worker ter-ikat ke job â†’ ikut ke-kill
+        runtime.set_job(job_id)  # ffmpeg worker ter-ikat ke job ? ikut ke-kill
         runtime.reset()
         try:
             if runtime.stop_requested(job_id):
@@ -932,11 +935,20 @@ async def reburn_captions(job_id: str):
             if not enabled:
                 _REBURN_STATUS[job_id] = "skipped"
                 return
-            _do()
+            result = _do()
             if runtime.stop_requested(job_id):
                 _REBURN_STATUS[job_id] = "killed"
+            elif result.status != StageStatus.DONE:
+                # Bukan "done" palsu: stage FAILED (mis. transcript hilang) ?
+                # frontend harusnya kasih toast gagal, bukan sukses.
+                _REBURN_STATUS[job_id] = "failed"
             else:
                 _REBURN_STATUS[job_id] = "done"
+        except Exception as e:
+            # Kalau tak di-catch, status tetap "running" ? frontend poll
+            # selamanya (modal wedged). Laporkan sebagai failed.
+            logging.getLogger(__name__).exception("reburn failed for %s", job_id)
+            _REBURN_STATUS[job_id] = "failed"
         finally:
             runtime.clear_job(job_id)
             # JANGAN pop di sini: delete_job butuh ref thread utk join/kill
@@ -946,12 +958,18 @@ async def reburn_captions(job_id: str):
     _REBURN_STATUS[job_id] = "running"
     _REBURN[job_id].start()
 
-    while True:
-        t = _REBURN.get(job_id)
-        if not t or not t.is_alive():
-            break
-        await asyncio.sleep(0.5)
-    return {"status": _REBURN_STATUS.get(job_id, "done")}
+    # #20: JANGAN blokir request sampai thread selesai (gateway timeout).
+    # Frontend poll /reburn-status sampai terminal.
+    return {"status": "running"}
+
+
+@app.get("/api/jobs/{job_id}/reburn-status")
+async def reburn_status(job_id: str):
+    t = _REBURN.get(job_id)
+    return {
+        "status": _REBURN_STATUS.get(job_id, "idle"),
+        "alive": bool(t and t.is_alive()),
+    }
 
 
 if __name__ == "__main__":

@@ -71,6 +71,23 @@ class IngestStage(Stage):
             if (row and row["title"] is not None and row["duration_sec"] is not None
                     and row["downloaded"]):
                 return StageResult(status=StageStatus.DONE, output_path=str(output_path))
+            if row and row["downloaded"]:
+                # File SUDAH terverifikasi lengkap (mark_downloaded di run
+                # sebelumnya), cuma metadata yang gagal — refetch tanpa
+                # re-download 400MB.
+                metadata = get_yt_metadata(url, timeout=600)
+                if not metadata or metadata.get("title") is None or metadata.get("duration") is None:
+                    return StageResult(
+                        status=StageStatus.FAILED,
+                        error="Gagal ambil metadata (title/duration) dari YouTube",
+                    )
+                db.update_job_metadata(
+                    job_id,
+                    title=metadata.get("title"),
+                    duration_sec=metadata.get("duration"),
+                    channel=metadata.get("channel"),
+                )
+                return StageResult(status=StageStatus.DONE, output_path=str(output_path))
             # downloaded=0 → file bisa parsial: buang lalu download ulang.
             # (JANGAN jatuh ke refetch metadata — itu menandai parsial
             # sebagai download sukses, transcribe jalan di video terpotong.)
@@ -109,12 +126,20 @@ class IngestStage(Stage):
             return StageResult(status=StageStatus.FAILED, error="Killed")
         if proc.returncode != 0:
             return StageResult(status=StageStatus.FAILED, error="yt-dlp download failed")
+        # File lengkap TERVERIFIKASI — tandai sekarang; metadata di bawah
+        # boleh gagal, retry cukup refetch (branch downloaded=1 di atas).
+        db.mark_downloaded(job_id)
+
+        # #10: metadata sudah ditulis early-fetch (POST)? Skip refetch —
+        # yt-dlp cukup 2x per job (early + download), hemat 1 call + rate-limit.
+        row = db.conn.execute(
+            "SELECT title, duration_sec FROM jobs WHERE id=?", (job_id,)
+        ).fetchone()
+        if row and row["title"] is not None and row["duration_sec"] is not None:
+            return StageResult(status=StageStatus.DONE, output_path=str(output_path))
 
         metadata = get_yt_metadata(url, timeout=600)
         if not metadata or metadata.get("title") is None or metadata.get("duration") is None:
-            # Gagal ambil metadata — jangan mark done, supaya is_complete
-            # (yang cek DB row lengkap) tidak true. File mp4 sudah ada,
-            # tapi retry akan ambil metadata lagi tanpa re-download.
             return StageResult(
                 status=StageStatus.FAILED,
                 error="Gagal ambil metadata (title/duration) dari YouTube",
@@ -125,7 +150,6 @@ class IngestStage(Stage):
             duration_sec=metadata.get("duration"),
             channel=metadata.get("channel"),
         )
-        db.mark_downloaded(job_id)
 
         return StageResult(status=StageStatus.DONE, output_path=str(output_path))
 

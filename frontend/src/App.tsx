@@ -1,12 +1,15 @@
-import { useCallback, useEffect, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useState } from "react";
+import { defaultStyle } from "./lib/captionDefaults";
+const StyleEditor = lazy(() => import("./components/StyleEditor").then((m) => ({ default: m.StyleEditor })));
+import { useConfirm } from "./components/ConfirmDialog";
 import { JobsView } from "./components/JobsView";
 import { JobDetail } from "./components/JobDetail";
-import { StyleEditor, defaultStyle } from "./components/StyleEditor";
 import { UrlInput } from "./components/UrlInput";
 import type { CaptionStyle, Job } from "./types";
 import { createJob, deleteJob, getCaptionStyle, getJob, getSettings, listJobs, saveCaptionStyle } from "./lib/api";
 
 export default function App() {
+  const { confirm, dialog: confirmDialog } = useConfirm();
   const [jobs, setJobs] = useState<Job[]>([]);
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
   const [activeJob, setActiveJob] = useState<Job | null>(null);
@@ -75,7 +78,7 @@ export default function App() {
   };
 
   const handleDelete = async (job: Job) => {
-    if (!confirm(`Hapus episode "${job.title || job.id}"? Semua file (klip, transkrip, subtitle) ikut terhapus.`)) return;
+    if (!(await confirm(`Hapus episode "${job.title || job.id}"? Semua file (klip, transkrip, subtitle) ikut terhapus.`))) return;
     try {
       await deleteJob(job.id);
       if (activeJobId === job.id) setActiveJobId(null);
@@ -148,7 +151,9 @@ export default function App() {
             </button>
             {styleOpen && style && (
               <div className="border-t border-edge px-5 py-4">
-                <StyleEditor value={style} onChange={setStyle} previewSide="right" />
+                <Suspense fallback={<div className="py-8 text-center text-xs text-slate-500">Muat editor gaya…</div>}>
+                  <StyleEditor value={style} onChange={setStyle} previewSide="right" />
+                </Suspense>
                 <div className="mt-5 flex flex-wrap items-center gap-3 border-t border-edge pt-4">
                   <button className="btn-primary flex items-center gap-1.5 px-6 py-2.5 text-sm" onClick={handleSaveStyle}>
                     {styleSaved && (
@@ -178,6 +183,7 @@ export default function App() {
           </div>
         </div>
       )}
+      {confirmDialog}
     </div>
   );
 }

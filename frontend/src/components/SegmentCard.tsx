@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { Segment } from "../types";
+import { formatCopyText } from "../lib/clipboard";
 
 interface Props {
   seg: Segment;
@@ -28,11 +29,7 @@ export function SegmentCard({ seg, index, onPlay, onReject, onToggle, onToast }:
   };
 
   const copyAffiliateCaption = async () => {
-    const textToCopy = seg.affiliate_caption
-      ? (seg.hashtags && seg.hashtags.length > 0
-          ? `${seg.affiliate_caption}\n\n${seg.hashtags.join(" ")}`
-          : seg.affiliate_caption)
-      : (seg.caption_text || "");
+    const textToCopy = formatCopyText(seg);
     if (!textToCopy) return;
     try {
       await navigator.clipboard.writeText(textToCopy);

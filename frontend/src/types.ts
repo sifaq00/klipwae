@@ -27,11 +27,6 @@ export interface StageRun {
   error_message: string | null;
 }
 
-export interface Settings {
-  whisper_model: string;
-  whisper_device: string;
-}
-
 export interface Segment {
   id: number;
   job_id: string;

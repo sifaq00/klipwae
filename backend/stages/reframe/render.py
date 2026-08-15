@@ -1,8 +1,9 @@
-﻿import shutil
+import shutil
 import tempfile
 from pathlib import Path
 
 from utils.ffmpeg_helpers import run_ffmpeg, video_encode_args
+from utils.video_info import get_video_info
 
 
 def render_center_crop(
@@ -11,7 +12,7 @@ def render_center_crop(
 ):
     if zoom > 0.01:
         # Push-in halus di single_shot juga — bikin klip "hidup" tanpa pan
-        fps, duration = _get_video_info(input_path)
+        fps, duration = get_video_info(input_path)
         rate = zoom / max(1.0, duration * fps)
         max_z = 1 + zoom
         filter_complex = (
@@ -49,7 +50,7 @@ def render_split_screen(
         render_center_crop(input_path, output_path)
         return
 
-    fps, _ = _get_video_info(input_path)
+    fps, _ = get_video_info(input_path)
 
     subclips = []
     with tempfile.TemporaryDirectory() as tmp:
@@ -87,25 +88,6 @@ def render_split_screen(
         ], timeout=300)
         if result.returncode != 0:
             raise RuntimeError(f"ffmpeg concat failed: {result.stderr[-500:].decode('utf-8', errors='replace')}")
-
-
-def _get_video_info(input_path: Path) -> tuple[float, float]:
-    result = run_ffmpeg([
-        "-i", str(input_path),
-        "-f", "null", "-",
-    ], timeout=30)
-    fps = 30.0
-    duration = 0.0
-    stderr = result.stderr
-    import re
-    for line in stderr.splitlines():
-        m = re.search(r"(\d+(?:\.\d+)?) fps", line)
-        if m:
-            fps = float(m.group(1))
-        m = re.search(r"Duration: (\d+):(\d+):(\d+\.\d+)", line)
-        if m:
-            duration = int(m.group(1)) * 3600 + int(m.group(2)) * 60 + float(m.group(3))
-    return fps, duration
 
 
 def _crop_segment(

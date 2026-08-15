@@ -21,20 +21,20 @@ Hasil audit menyeluruh frontend + backend. Diurutkan berdasarkan **dampak nyata*
 
 | # | Masalah | Dampak | Lokasi |
 |---|---------|--------|--------|
-| 5 | **Whisper model di-load ulang tiap job** — `WhisperModel(...)` baca disk 5–15 detik setiap transcribe | Buang waktu 5–15 detik/job | [`transcribe.py:114`](file:///D:/Project/auto-clipper-app/backend/stages/transcribe.py#L114) |
-| 6 | **6–7 video decode pass di reframe** — detect_layout, face_regions, speaker_activity, tracker, render masing-masing buka video sendiri | CPU/GPU kerja 6× lipat per klip | [`reframe/__init__.py`](file:///D:/Project/auto-clipper-app/backend/stages/reframe/__init__.py) |
-| 7 | **Missing DB indexes** — `stage_runs`, `metrics`, `segments`, `jobs` tanpa index, full table scan | Query makin lambat seiring data tumbuh | [`schema.sql`](file:///D:/Project/auto-clipper-app/backend/db/schema.sql) |
-| 8 | **`_ensure_columns()` jalan tiap `JobDB()` dibuat** — DDL inspection di setiap API call | Overhead mikro (PRAGMA µs-level) — paling terasa di burst request; pindah ke `init_db()` tetap lebih bersih | [`jobs.py:64`](file:///D:/Project/auto-clipper-app/backend/db/jobs.py#L64) |
-| 9 | **Tracker load frame ke RAM** — frame **sampled** (step=3, bukan semua) tetap bertumpuk di list Python: 200 frame 1080p ≈ 1.2GB | Risiko OOM di video panjang | [`tracker.py:96`](file:///D:/Project/auto-clipper-app/backend/stages/reframe/tracker.py#L96) |
-| 10 | **yt-dlp dipanggil 3× per job** — metadata awal, download, metadata ulang | Lambat + risiko rate-limit YouTube | [`ingest.py:90, 113`](file:///D:/Project/auto-clipper-app/backend/stages/ingest.py#L90) |
+| 5 | **Whisper model di-load ulang tiap job** — `WhisperModel(...)` baca disk 5–15 detik setiap transcribe | Buang waktu 5–15 detik/job | [`transcribe.py:114`](file:///D:/Project/auto-clipper-app/backend/stages/transcribe.py#L114) | ✅ **FIXED** — singleton cache (lock + 1 model di VRAM, key = model/device/compute) |
+| 6 | **6–7 video decode pass di reframe** — detect_layout, face_regions, speaker_activity, tracker, render masing-masing buka video sendiri | CPU/GPU kerja 6× lipat per klip | [`reframe/__init__.py`](file:///D:/Project/auto-clipper-app/backend/stages/reframe/__init__.py) | ⏳ Open — single-decode-pass = redesign pipeline, butuh benchmark GPU; tracker sudah di-chunk (#9) |
+| 7 | **Missing DB indexes** — `stage_runs`, `metrics`, `segments`, `jobs` tanpa index, full table scan | Query makin lambat seiring data tumbuh | [`schema.sql`](file:///D:/Project/auto-clipper-app/backend/db/schema.sql) | ✅ **FIXED** — 4 index: stage_runs(job_id,stage,status), metrics(job_id,stage), segments(job_id), jobs(created_at) |
+| 8 | **`_ensure_columns()` jalan tiap `JobDB()` dibuat** — DDL inspection di setiap API call | Overhead mikro (PRAGMA µs-level) — paling terasa di burst request; pindah ke `init_db()` tetap lebih bersih | [`jobs.py:64`](file:///D:/Project/auto-clipper-app/backend/db/jobs.py#L64) | ✅ **FIXED** — dipindah ke `init_db()` (sekali per startup) + test disesuaikan |
+| 9 | **Tracker load frame ke RAM** — frame **sampled** (step=3, bukan semua) tetap bertumpuk di list Python: 200 frame 1080p ≈ 1.2GB | Risiko OOM di video panjang | [`tracker.py:96`](file:///D:/Project/auto-clipper-app/backend/stages/reframe/tracker.py#L96) | ✅ **FIXED** — track per-chunk 32-frame (`persist=True` antar chunk): 1.2GB → ~200MB, ID tetap nyambung |
+| 10 | **yt-dlp dipanggil 3× per job** — metadata awal, download, metadata ulang | Lambat + risiko rate-limit YouTube | [`ingest.py:90, 113`](file:///D:/Project/auto-clipper-app/backend/stages/ingest.py#L90) | ✅ **FIXED** — refetch post-download di-skip kalau early-fetch sudah tulis metadata (3× → 2×) |
 
 ### Frontend
 
 | # | Masalah | Dampak | Lokasi |
 |---|---------|--------|--------|
-| 11 | **SSE log stream → re-render storm** — setiap baris log memicu `setLogs`, re-render seluruh `JobDetail` 20–60×/detik | UI lag / jank saat pipeline jalan | [`JobDetail.tsx:68`](file:///D:/Project/auto-clipper-app/frontend/src/components/JobDetail.tsx#L68) |
-| 12 | **Card tanpa `React.memo`** — `SegmentCard` & `JobCard` re-render tiap 3 detik polling | Wasted render cycles | [`SegmentCard.tsx:13`](file:///D:/Project/auto-clipper-app/frontend/src/components/SegmentCard.tsx#L13) |
-| 13 | **Polling interval leak saat reburn** — `setInterval` tidak di-cleanup kalau user navigasi balik | Memory leak, phantom API calls | [`JobDetail.tsx:166`](file:///D:/Project/auto-clipper-app/frontend/src/components/JobDetail.tsx#L166) |
+| 11 | **SSE log stream → re-render storm** — setiap baris log memicu `setLogs`, re-render seluruh `JobDetail` 20–60×/detik | UI lag / jank saat pipeline jalan | [`JobDetail.tsx:68`](file:///D:/Project/auto-clipper-app/frontend/src/components/JobDetail.tsx#L68) | ✅ **FIXED** — batch 100ms (buffer + flush), progress terpisah |
+| 12 | **Card tanpa `React.memo`** — `SegmentCard` & `JobCard` re-render tiap 3 detik polling | Wasted render cycles | [`SegmentCard.tsx:13`](file:///D:/Project/auto-clipper-app/frontend/src/components/SegmentCard.tsx#L13) | ✅ **FIXED** — keduanya `memo` |
+| 13 | **Polling interval leak saat reburn** — `setInterval` tidak di-cleanup kalau user navigasi balik | Memory leak, phantom API calls | [`JobDetail.tsx:166`](file:///D:/Project/auto-clipper-app/frontend/src/components/JobDetail.tsx#L166) | ✅ **FIXED** — `reburnPollRef` + cleanup on unmount + clear di finally |
 
 ---
 
@@ -42,15 +42,15 @@ Hasil audit menyeluruh frontend + backend. Diurutkan berdasarkan **dampak nyata*
 
 | # | Masalah | Dampak | Lokasi |
 |---|---------|--------|--------|
-| 14 | **Tidak ada Error Boundary** — error rendering = blank putih, user bingung | UX buruk saat crash | `main.tsx` |
-| 15 | **PlayerModal overflow di mobile** — `max-h-[76vh]` + controls > 100vh, tombol terpotong | Mobile unusable | [`JobDetail.tsx:605`](file:///D:/Project/auto-clipper-app/frontend/src/components/JobDetail.tsx#L605) |
-| 16 | **`stageLabel` bug** — status `"downloading"` tidak di-map, tampil raw string | Label progress jelek | [`JobDetail.tsx:496`](file:///D:/Project/auto-clipper-app/frontend/src/components/JobDetail.tsx#L496) |
-| 17 | **Duplikat `STATUS_TO_STAGE`** — copy-paste di `JobsView.tsx` padahal sudah ada di `stages.tsx` | Code bloat | [`JobsView.tsx:14`](file:///D:/Project/auto-clipper-app/frontend/src/components/JobsView.tsx#L14) |
-| 18 | **Duplikat clipboard formatting** — logika salin caption identik di 2 file | Maintenance risk | `SegmentCard.tsx:30`, `JobDetail.tsx:587` |
-| 19 | **Spinner thread leak di transcribe** — kalau Whisper crash, thread spinner jalan selamanya | Background thread zombie | [`transcribe.py:131`](file:///D:/Project/auto-clipper-app/backend/stages/transcribe.py#L131) |
-| 20 | **`reburn_captions` blokir HTTP** — request tetap terbuka selama proses reburn berjalan | Gateway timeout | [`server.py:943`](file:///D:/Project/auto-clipper-app/backend/server.py#L943) |
-| 21 | **Missing ARIA labels** — tombol icon-only tanpa `aria-label`, toggle tanpa `role="switch"` | Accessibility gagal | Seluruh komponen |
-| 22 | **Native `confirm()` dialog** — `window.confirm` membekukan thread, tidak bisa di-theme | UX kuno | `App.tsx:78`, `JobDetail.tsx:190` |
+| 14 | **Tidak ada Error Boundary** — error rendering = blank putih, user bingung | UX buruk saat crash | `main.tsx` | ✅ **FIXED** — `ErrorBoundary` + fallback UI + tombol Coba lagi |
+| 15 | **PlayerModal overflow di mobile** — `max-h-[76vh]` + controls > 100vh, tombol terpotong | Mobile unusable | [`JobDetail.tsx:605`](file:///D:/Project/auto-clipper-app/frontend/src/components/JobDetail.tsx#L605) | ✅ **FIXED** — 52vh mobile / 76vh desktop |
+| 16 | **`stageLabel` bug** — status `"downloading"` tidak di-map, tampil raw string | Label progress jelek | [`JobDetail.tsx:496`](file:///D:/Project/auto-clipper-app/frontend/src/components/JobDetail.tsx#L496) | ✅ **FIXED** — map via `STATUS_TO_STAGE` → label stage |
+| 17 | **Duplikat `STATUS_TO_STAGE`** — copy-paste di `JobsView.tsx` padahal sudah ada di `stages.tsx` | Code bloat | [`JobsView.tsx:14`](file:///D:/Project/auto-clipper-app/frontend/src/components/JobsView.tsx#L14) | ✅ **FIXED** — satu sumber di `lib/stages.tsx` |
+| 18 | **Duplikat clipboard formatting** — logika salin caption identik di 2 file | Maintenance risk | `SegmentCard.tsx:30`, `JobDetail.tsx:587` | ✅ **FIXED** — `lib/clipboard.ts` sumber tunggal |
+| 19 | **Spinner thread leak di transcribe** — kalau Whisper crash, thread spinner jalan selamanya | Background thread zombie | [`transcribe.py:131`](file:///D:/Project/auto-clipper-app/backend/stages/transcribe.py#L131) | ✅ **FIXED** — `try/finally`: selalu `alive.set()` + `join` |
+| 20 | **`reburn_captions` blokir HTTP** — request tetap terbuka selama proses reburn berjalan | Gateway timeout | [`server.py:943`](file:///D:/Project/auto-clipper-app/backend/server.py#L943) | ✅ **FIXED** — return segera + `GET /reburn-status` + frontend poll terminal state |
+| 21 | **Missing ARIA labels** — tombol icon-only tanpa `aria-label`, toggle tanpa `role="switch"` | Accessibility gagal | Seluruh komponen | ✅ **FIXED** — toggle `role="switch"` + `aria-checked`; icon-only pakai `title` |
+| 22 | **Native `confirm()` dialog** — `window.confirm` membekukan thread, tidak bisa di-theme | UX kuno | `App.tsx:78`, `JobDetail.tsx:190` | ✅ **FIXED** — `useConfirm()` dialog inline (theme-able, async) |
 
 ---
 
@@ -58,14 +58,14 @@ Hasil audit menyeluruh frontend + backend. Diurutkan berdasarkan **dampak nyata*
 
 | # | Masalah | Lokasi |
 |---|---------|--------|
-| 23 | Dead code: no-op `.replace()` di log viewer | `JobDetail.tsx:413` |
-| 24 | Unused CSS class `.input-glass` | `index.css:59` |
-| 25 | Unused Tailwind animations `shimmer`, `scan` | `tailwind.config.js` |
-| 26 | Dead `Settings` interface di `types.ts` | `types.ts:30` |
-| 27 | Redundant re-export shims `detect_layout.py`, `diarize.py` | `reframe/` |
-| 28 | Duplikat `_get_video_info` (ffprobe vs ffmpeg -f null) | `reframe/__init__.py` vs `render.py` |
-| 29 | Lazy-load `StyleEditor` (~26KB) | `App.tsx`, `JobDetail.tsx` |
-| 30 | API pagination (hardcoded `LIMIT 50`) | `server.py:389` |
+| 23 | Dead code: no-op `.replace()` di log viewer | ✅ **FIXED** | `JobDetail.tsx:413` |
+| 24 | Unused CSS class `.input-glass` | ✅ **FIXED** | `index.css:59` |
+| 25 | Unused Tailwind animations `shimmer`, `scan` | ✅ **FIXED** | `tailwind.config.js` |
+| 26 | Dead `Settings` interface di `types.ts` | ✅ **FIXED** | `types.ts:30` |
+| 27 | Redundant re-export shims `detect_layout.py`, `diarize.py` | ✅ **FIXED** | `reframe/` |
+| 28 | Duplikat `_get_video_info` (ffprobe vs ffmpeg -f null) | ✅ **FIXED** — `utils/video_info.py` satu sumber | `reframe/__init__.py` vs `render.py` |
+| 29 | Lazy-load `StyleEditor` (~26KB) | ✅ **FIXED** — `React.lazy` + `Suspense` | `App.tsx`, `JobDetail.tsx` |
+| 30 | API pagination (hardcoded `LIMIT 50`) | ✅ **FIXED** — `limit`/`offset` clamp + load-more | `server.py:389` |
 
 ---
 

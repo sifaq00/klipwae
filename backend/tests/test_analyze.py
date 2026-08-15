@@ -130,8 +130,8 @@ def test_analyze_stage_with_mock(tmp_path: Path):
     try:
         # Setup: buat transcript, prompts, .env
         Path("data/transcripts").mkdir(parents=True)
-        Path("prompts").mkdir()
-        Path("prompts/product_detection.txt").write_text("test prompt", encoding="utf-8")
+        Path("prompts/presets").mkdir(parents=True)
+        Path("prompts/presets/affiliate.txt").write_text("test prompt", encoding="utf-8")
         Path("prompts/caption_generator.txt").write_text("test caption prompt", encoding="utf-8")
 
         transcript = [
@@ -332,8 +332,8 @@ def test_analyze_stage_chunk_failure_does_not_fail_job(tmp_path):
     os.chdir(tmp_path)
     try:
         Path("data/transcripts").mkdir(parents=True)
-        Path("prompts").mkdir()
-        Path("prompts/product_detection.txt").write_text("test prompt", encoding="utf-8")
+        Path("prompts/presets").mkdir(parents=True)
+        Path("prompts/presets/affiliate.txt").write_text("test prompt", encoding="utf-8")
         Path("prompts/caption_generator.txt").write_text("test caption prompt", encoding="utf-8")
 
         transcript = [

@@ -85,25 +85,23 @@ def format_chunk_for_prompt(chunk: list[SimpleNamespace]) -> str:
 
 
 def get_preset_prompt(preset: str = "affiliate") -> str:
-    """Load system prompt for the specified niche preset.
-    Falls back to product_detection.txt if preset is missing or not found."""
+    """Load system prompt for the specified niche preset from prompts/presets/<preset>.txt.
+    Falls back to affiliate.txt if preset is missing or not found."""
     p_name = (preset or "affiliate").lower().strip()
+    backend_dir = Path(__file__).resolve().parent.parent
     candidates = [
         Path("backend/prompts/presets") / f"{p_name}.txt",
         Path("prompts/presets") / f"{p_name}.txt",
-        Path(__file__).resolve().parent.parent / "prompts" / "presets" / f"{p_name}.txt",
-        # Fallbacks
-        Path("prompts/product_detection.txt"),
-        Path("backend/prompts/product_detection.txt"),
-        Path(__file__).resolve().parent.parent / "prompts" / "product_detection.txt",
+        backend_dir / "prompts" / "presets" / f"{p_name}.txt",
+        # Fallback to default affiliate preset
         Path("backend/prompts/presets/affiliate.txt"),
         Path("prompts/presets/affiliate.txt"),
-        Path(__file__).resolve().parent.parent / "prompts" / "presets" / "affiliate.txt",
+        backend_dir / "prompts" / "presets" / "affiliate.txt",
     ]
     for c in candidates:
         if c.exists() and c.is_file():
             return c.read_text(encoding="utf-8")
-    raise FileNotFoundError(f"Prompt preset '{preset}' and fallback prompts not found")
+    raise FileNotFoundError(f"Prompt preset '{preset}' and fallback affiliate preset not found")
 
 
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=30))

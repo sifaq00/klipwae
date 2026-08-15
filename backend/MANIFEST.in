@@ -1,3 +1,4 @@
 include db/schema.sql
-include db/migrations/*.sql
-include prompts/product_detection.txt
+include prompts/presets/*.txt
+include prompts/caption_generator.txt
+include assets/fonts/*.ttf

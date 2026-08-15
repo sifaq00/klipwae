@@ -90,10 +90,8 @@ export default function App() {
     <div className="mx-auto max-w-6xl px-4 pb-16 pt-6 sm:pt-10">
       <header className="mb-8 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="relative flex h-10 w-10 items-center justify-center rounded-xl border border-accent/40 bg-gradient-to-br from-accent/30 to-neon/20">
-            <svg className="h-5 w-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
-            </svg>
+          <div className="group relative flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-accent/40 bg-slate-950 shadow-lg shadow-accent/20 transition-transform duration-200 hover:scale-105">
+            <img src="/logo.jpg" alt="Klipwae Studio Logo" className="h-full w-full object-cover" />
             <div className="absolute -inset-1 -z-10 rounded-xl bg-accent/30 blur-md" />
           </div>
           <div>

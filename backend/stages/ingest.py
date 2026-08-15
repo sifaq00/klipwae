@@ -64,28 +64,29 @@ class IngestStage(Stage):
         if output_path.exists():
             # Skip download HANYA kalau marker downloaded=1 — file + metadata
             # saja tak cukup: file parsial >1MB (kill pas merge) + metadata
-            # early-fetch bisa keduanya hadir. downloaded=0 → re-download
-            # (yt-dlp menimpa file parsial).
+            # early-fetch bisa keduanya hadir.
             row = db.conn.execute(
                 "SELECT title, duration_sec, downloaded FROM jobs WHERE id=?", (job_id,)
             ).fetchone()
             if (row and row["title"] is not None and row["duration_sec"] is not None
                     and row["downloaded"]):
                 return StageResult(status=StageStatus.DONE, output_path=str(output_path))
-            # jatuh ke download (atau ambil metadata di bawah kalau path ini
-            # dipanggil dengan file partial — else branch di bawah)
-        else:
-            # Cek disk space sebelum download (plan Section 10.1) — podcast 2 jam
-            # di 720p bisa 500MB-1GB; butuh buffer. Gagal cepat di sini lebih baik
-            # daripada gagal setelah download setengah jadi.
-            free = shutil.disk_usage(raw_dir).free
-            if free < 2 * 1024 ** 3:
-                return StageResult(
-                    status=StageStatus.FAILED,
-                    error=f"Disk space kurang dari 2GB: {free // (1024 ** 3)}GB free",
-                )
+            # downloaded=0 → file bisa parsial: buang lalu download ulang.
+            # (JANGAN jatuh ke refetch metadata — itu menandai parsial
+            # sebagai download sukses, transcribe jalan di video terpotong.)
+            output_path.unlink(missing_ok=True)
 
-            proc = subprocess.Popen([
+        # Cek disk space sebelum download (plan Section 10.1) — podcast 2 jam
+        # di 720p bisa 500MB-1GB; butuh buffer. Gagal cepat di sini lebih baik
+        # daripada gagal setelah download setengah jadi.
+        free = shutil.disk_usage(raw_dir).free
+        if free < 2 * 1024 ** 3:
+            return StageResult(
+                status=StageStatus.FAILED,
+                error=f"Disk space kurang dari 2GB: {free // (1024 ** 3)}GB free",
+            )
+
+        proc = subprocess.Popen([
                 "yt-dlp",
                 "--no-playlist",
                 "-f", f"bestvideo[height<={config.video_download_resolution}]+bestaudio/best[height<={config.video_download_resolution}]",
@@ -94,20 +95,20 @@ class IngestStage(Stage):
                 "-o", str(output_path),
                 url,
             ], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding="utf-8", errors="replace")
-            runtime.set_proc(proc)
-            try:
-                # Forward progress yt-dlp ke stdout (yang di-capture ke log job)
-                for line in proc.stdout:
-                    print(line, end="")
-                proc.wait()
-            finally:
-                runtime.clear_proc(proc)
-            if runtime.stop_requested():
-                # Killed: laporkan Killed, bukan "download failed" (status jadi
-                # "killed" di orchestrator, bukan "failed")
-                return StageResult(status=StageStatus.FAILED, error="Killed")
-            if proc.returncode != 0:
-                return StageResult(status=StageStatus.FAILED, error="yt-dlp download failed")
+        runtime.set_proc(proc)
+        try:
+            # Forward progress yt-dlp ke stdout (yang di-capture ke log job)
+            for line in proc.stdout:
+                print(line, end="")
+            proc.wait()
+        finally:
+            runtime.clear_proc(proc)
+        if runtime.stop_requested():
+            # Killed: laporkan Killed, bukan "download failed" (status jadi
+            # "killed" di orchestrator, bukan "failed")
+            return StageResult(status=StageStatus.FAILED, error="Killed")
+        if proc.returncode != 0:
+            return StageResult(status=StageStatus.FAILED, error="yt-dlp download failed")
 
         metadata = get_yt_metadata(url, timeout=600)
         if not metadata or metadata.get("title") is None or metadata.get("duration") is None:
@@ -124,6 +125,7 @@ class IngestStage(Stage):
             duration_sec=metadata.get("duration"),
             channel=metadata.get("channel"),
         )
+        db.mark_downloaded(job_id)
 
         return StageResult(status=StageStatus.DONE, output_path=str(output_path))
 

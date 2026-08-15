@@ -349,8 +349,12 @@ class AnalyzeStage(Stage):
             all_segments.extend(segments)
             total_cost += calc_cost(usage, config.analyze_model)
             chunks_processed += 1
-        if killed or runtime.stop_requested(job_id):
+        if killed:
+            for f in futs:
+                f.cancel()
+            pool.shutdown(wait=False, cancel_futures=True)
             return StageResult(status=StageStatus.FAILED, error="Killed")
+        pool.shutdown(wait=True)
 
         all_segments = deduplicate_overlapping_segments(all_segments)
         merged = merge_and_dedupe(all_segments)

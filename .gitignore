@@ -21,3 +21,8 @@ Thumbs.db
 
 # Docs internal plan/spec (bukan untuk publik)
 docs/superpowers/
+.superpowers/
+
+# Runtime state — jobs.db berisi riwayat job, jangan pernah masuk git
+data/
+backend/data/*.db*

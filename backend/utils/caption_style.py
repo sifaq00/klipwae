@@ -16,7 +16,10 @@ DEFAULT_STYLE: dict = {
     "italic": False,
     "uppercase": False,
     "pop": False,
-    "bounce": True,
+    # ponytail: bounce pakai \t yang rusak di libass build ini (end-state
+    # nempel dari awal, caption.py:147) — default OFF sampai terverifikasi
+    # render asli (git-log 894e176). Aktifkan manual kalau sudah dicek.
+    "bounce": False,
     "auto_emoji": True,
     "spacing": 0,
     "line_spacing": 0,
@@ -45,25 +48,25 @@ STR_KEYS = {
 
 AVAILABLE_FONTS = [
     {"name": "Montserrat Black", "label": "Montserrat Black", "tag": "Viral TikTok", "sample": "AA"},
-    {"name": "Segoe UI Black", "label": "Segoe UI Black", "tag": "Bold Clean", "sample": "AA"},
-    {"name": "Impact", "label": "Impact", "tag": "Punchy Meme", "sample": "AA"},
-    {"name": "Arial Black", "label": "Arial Black", "tag": "Universal Heavy", "sample": "AA"},
-    {"name": "Trebuchet MS", "label": "Trebuchet MS", "tag": "Dynamic Modern", "sample": "AA"},
-    {"name": "Verdana Bold", "label": "Verdana Bold", "tag": "High Legibility", "sample": "AA"},
+    {"name": "Poppins Bold", "label": "Poppins Bold", "tag": "Bold Clean", "sample": "AA"},
+    {"name": "Anton", "label": "Anton", "tag": "Punchy Meme", "sample": "AA"},
+    {"name": "Archivo Black", "label": "Archivo Black", "tag": "Universal Heavy", "sample": "AA"},
+    {"name": "Poppins ExtraBold", "label": "Poppins ExtraBold", "tag": "Dynamic Modern", "sample": "AA"},
+    {"name": "Roboto", "label": "Roboto", "tag": "High Legibility", "sample": "AA"},
 ]
 
 FONT_NAME_MAP = {
     "Montserrat-Black": "Montserrat Black",
     "Montserrat Black": "Montserrat Black",
-    "Segoe-UI-Black": "Segoe UI Black",
-    "Segoe UI Black": "Segoe UI Black",
-    "Impact": "Impact",
-    "Arial-Black": "Arial Black",
-    "Arial Black": "Arial Black",
-    "Trebuchet-MS": "Trebuchet MS",
-    "Trebuchet MS": "Trebuchet MS",
-    "Verdana-Bold": "Verdana Bold",
-    "Verdana Bold": "Verdana Bold",
+    "Segoe-UI-Black": "Poppins Bold",  # font MS proprietary → ganti OFL
+    "Segoe UI Black": "Poppins Bold",
+    "Impact": "Anton",
+    "Arial-Black": "Archivo Black",
+    "Arial Black": "Archivo Black",
+    "Trebuchet-MS": "Poppins ExtraBold",
+    "Trebuchet MS": "Poppins ExtraBold",
+    "Verdana-Bold": "Roboto",
+    "Verdana Bold": "Roboto",
 }
 
 

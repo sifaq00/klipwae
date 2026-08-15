@@ -173,7 +173,8 @@ def test_generate_ass_auto_emoji():
 def test_default_style_margin_safe_for_tiktok():
     from utils.caption_style import DEFAULT_STYLE
     assert DEFAULT_STYLE["margin_v"] == 240
-    assert DEFAULT_STYLE["bounce"] is True
+    # bounce OFF by default: \t rusak di libass build ini (caption.py:147)
+    assert DEFAULT_STYLE["bounce"] is False
     assert DEFAULT_STYLE["auto_emoji"] is True
 
 

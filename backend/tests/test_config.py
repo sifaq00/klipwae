@@ -88,9 +88,27 @@ def test_settings_custom_values():
             os.environ.pop(key, None)
 
 
+def test_reframe_smooth_settings_defaults():
+    os.environ["GOOGLE_API_KEY"] = "test-key"
+    try:
+        from config import Settings
+        s = Settings(_env_file=None)
+        assert s.reframe_zoom_deadband == 0.05
+        assert s.reframe_smooth_alpha == 0.08
+        assert s.reframe_target_alpha == 0.25
+        assert s.reframe_deadband == 0.012
+        assert s.reframe_head_bias == 0.22
+        assert s.reframe_zoom_ease == 0.04
+        assert s.reframe_hold_sec == 0.8
+        print("OK test_reframe_smooth_settings_defaults")
+    finally:
+        del os.environ["GOOGLE_API_KEY"]
+
+
 if __name__ == "__main__":
     test_settings_defaults()
     test_settings_chunk_validation()
     test_settings_chunk_equal()
     test_settings_custom_values()
+    test_reframe_smooth_settings_defaults()
     print("\nAll config tests passed.")

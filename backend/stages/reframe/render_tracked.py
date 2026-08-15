@@ -15,6 +15,22 @@ from utils.ffmpeg_helpers import run_ffmpeg
 CONF_MIN = 0.35        # box di bawah confidence ini diabaikan
 
 
+def _apply_soft_deadzone(displacement: float, deadband: float) -> float:
+    """Calculate excess displacement beyond deadband.
+    Starts smoothly from 0.0 at the deadband threshold."""
+    if abs(displacement) <= deadband:
+        return 0.0
+    import math
+    return math.copysign(abs(displacement) - deadband, displacement)
+
+
+def _update_target_zoom(raw_zoom: float, active_target: float, deadband: float) -> float:
+    """Apply hysteresis / deadband to target zoom to eliminate breathing effect."""
+    if abs(raw_zoom - active_target) > deadband:
+        return raw_zoom
+    return active_target
+
+
 def render_tracked(
     input_path: Path,
     camera_path: list[tuple[float, float, str]],
@@ -25,16 +41,17 @@ def render_tracked(
     target_w: int = 1080,
     target_h: int = 1920,
     clip_no: str = "",
-    smooth_alpha: float = 0.12,
-    target_alpha: float = 0.35,
-    deadband: float = 0.006,
-    hold_sec: float = 0.5,
-    head_bias: float = 0.30,
+    smooth_alpha: float = 0.08,
+    target_alpha: float = 0.25,
+    deadband: float = 0.012,
+    hold_sec: float = 0.8,
+    head_bias: float = 0.22,
     zoom_fit: float = 0.6,
     zoom_min: float = 1.15,
     zoom_max: float = 2.0,
     zoom_idle: float = 1.05,
-    zoom_ease: float = 0.06,
+    zoom_ease: float = 0.04,
+    zoom_deadband: float = 0.05,
 ):
     # zone_names: side string → zona int (dari assign_zones median)
     zone_names = {0: "left", 1: "right"}
@@ -65,6 +82,7 @@ def render_tracked(
     cx, cy = w / 2, h / 2
     t_cx, t_cy = w / 2, h / 2   # target halus (EMA kedua)
     zoom = zoom_idle
+    active_target_zoom = zoom_idle
     db_x = w * deadband
     db_y = h * deadband
     hold_left = 0
@@ -108,16 +126,20 @@ def render_tracked(
                 # EMA kedua: target box sendiri dihaluskan dulu (buang jitter deteksi)
                 t_cx += (bx - t_cx) * target_alpha
                 t_cy += (by - t_cy) * target_alpha
-                # deadband: target geser dikit → kamera DIAM (kill micro-jitter)
+                # soft deadzone: kamera gerak mulus tanpa hentakan stop-and-go
                 dx = t_cx - cx
                 dy = t_cy - cy
-                if abs(dx) > db_x:
-                    cx += dx * smooth_alpha
-                if abs(dy) > db_y:
-                    cy += dy * smooth_alpha
-                # Auto-zoom dari ukuran box: orang pas ~62% tinggi frame
+                excess_x = _apply_soft_deadzone(dx, db_x)
+                excess_y = _apply_soft_deadzone(dy, db_y)
+                if excess_x != 0.0:
+                    cx += excess_x * smooth_alpha
+                if excess_y != 0.0:
+                    cy += excess_y * smooth_alpha
+                # Auto-zoom stabil dari ukuran box dengan filter hysteresis
                 box_h = max(1.0, box[4] - box[2])
-                target_zoom = max(zoom_min, min(zoom_max, (h * zoom_fit) / box_h))
+                raw_zoom = max(zoom_min, min(zoom_max, (h * zoom_fit) / box_h))
+                active_target_zoom = _update_target_zoom(raw_zoom, active_target_zoom, zoom_deadband)
+                target_zoom = active_target_zoom
                 hold_left = hold_frames
             else:
                 # Track hilang sesaat → TAHAN posisi (jangan drift langsung)
@@ -126,9 +148,11 @@ def render_tracked(
                 else:
                     cx += (w / 2 - cx) * 0.02
                     cy += (h / 2 - cy) * 0.02
-                    target_zoom = zoom_idle
+                    active_target_zoom = _update_target_zoom(zoom_idle, active_target_zoom, zoom_deadband)
+                    target_zoom = active_target_zoom
         else:
-            target_zoom = zoom_idle
+            active_target_zoom = _update_target_zoom(zoom_idle, active_target_zoom, zoom_deadband)
+            target_zoom = active_target_zoom
 
         if target_zoom is not None:
             zoom += (target_zoom - zoom) * zoom_ease

@@ -42,13 +42,36 @@ def _extract_boxes(result) -> list:
     return boxes
 
 
+def _interpolate_boxes(boxes_a: list, boxes_b: list, t: float) -> list:
+    """Linearly interpolate boxes with matching track IDs between two sampled frames."""
+    if not boxes_b or t <= 0.0:
+        return boxes_a
+    if not boxes_a or t >= 1.0:
+        return boxes_b
+
+    b_map = {b[0]: b for b in boxes_b}
+    out = []
+    for a in boxes_a:
+        bid = a[0]
+        if bid in b_map:
+            b = b_map[bid]
+            x1 = a[1] + (b[1] - a[1]) * t
+            y1 = a[2] + (b[2] - a[2]) * t
+            x2 = a[3] + (b[3] - a[3]) * t
+            y2 = a[4] + (b[4] - a[4]) * t
+            conf = a[5] + (b[5] - a[5]) * t
+            out.append((bid, x1, y1, x2, y2, conf))
+        else:
+            out.append(a)
+    return out
+
+
 def track_persons(video_path: Path, device: str = "cuda", clip_no: str = "",
                   step: int = TRACK_STEP, use_cache: bool = True,
                   imgsz: int = TRACK_IMGSZ) -> list[dict] | None:
     """Track per-frame → [{"frame": i, "boxes": [(track_id, x1,y1,x2,y2, conf), ...]}].
 
-    step>1 = inference tiap frame ke-N, frame antara ikut box terakhir (kamera
-    punya EMA + deadband yang buang jitter deteksi, jadi setara visual).
+    step>1 = inference tiap frame ke-N, frame antara diinterpolasi linier (lerp).
     imgsz=320 = 4x murah FLOPs YOLO tanpa menambah frame-miss (terukur).
     Hasil di-cache (key: nama file + ukuran + step + imgsz) — A/B tuning
     parameter kamera tidak nge-track ulang. Gagal → None (stage fallback).
@@ -88,14 +111,20 @@ def track_persons(video_path: Path, device: str = "cuda", clip_no: str = "",
         results = model.track(sampled, persist=True, device=device,
                               conf=0.3, imgsz=imgsz, verbose=False, save=False)
 
-        # Phase 3: expand — frame antara ikut box terakhir.
+        # Phase 3: expand dengan interpolasi linier antar frame sampel.
         out = []
         prefix = f"reframe track {clip_no} " if clip_no else "reframe track "
-        last = []
+        sampled_boxes = [_extract_boxes(res) for res in results]
+        num_samples = len(sampled_boxes)
+
         for idx in range(i):
-            if idx % step == 0:
-                last = _extract_boxes(results[idx // step])
-            out.append({"frame": idx, "boxes": last})
+            sample_idx = idx // step
+            if sample_idx >= num_samples - 1:
+                frame_boxes = sampled_boxes[-1] if sampled_boxes else []
+            else:
+                t = (idx % step) / float(step)
+                frame_boxes = _interpolate_boxes(sampled_boxes[sample_idx], sampled_boxes[sample_idx + 1], t)
+            out.append({"frame": idx, "boxes": frame_boxes})
             # progres per ~10% — biar bar reframe gerak realtime
             if total and (idx % max(1, total // 10) == 0):
                 print(f"    {prefix}{idx / total * 100:.0f}%")

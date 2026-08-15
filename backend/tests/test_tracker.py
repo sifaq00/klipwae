@@ -40,6 +40,34 @@ def test_extract_boxes():
     assert _extract_boxes(r2) == []
 
 
+def test_interpolate_boxes():
+    from stages.reframe.tracker import _interpolate_boxes
+
+    # Sample 0: box at (10, 20, 100, 200) for track 1
+    # Sample 1: box at (20, 40, 110, 210) for track 1
+    sample_a = [(1, 10.0, 20.0, 100.0, 200.0, 0.9)]
+    sample_b = [(1, 20.0, 40.0, 110.0, 210.0, 0.9)]
+
+    # Halfway (t = 0.5)
+    interp = _interpolate_boxes(sample_a, sample_b, 0.5)
+    assert len(interp) == 1
+    bid, x1, y1, x2, y2, conf = interp[0]
+    assert bid == 1
+    assert x1 == 15.0
+    assert y1 == 30.0
+    assert x2 == 105.0
+    assert y2 == 205.0
+
+    # Boundary t=0.0 -> exact sample_a
+    assert _interpolate_boxes(sample_a, sample_b, 0.0) == sample_a
+    # Boundary t=1.0 -> exact sample_b
+    assert _interpolate_boxes(sample_a, sample_b, 1.0) == sample_b
+
+    # Track missing in sample_b -> preserved from sample_a
+    sample_b_empty = []
+    assert _interpolate_boxes(sample_a, sample_b_empty, 0.5) == sample_a
+
+
 def test_track_persons_subsample_and_cache(tmp_path):
     """Step=3 → semua frame tercatat (carry-forward), inference cuma ~1/3
     frame. Cache JSON: run kedua tidak nge-track ulang."""

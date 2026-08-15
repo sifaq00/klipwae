@@ -1,5 +1,5 @@
-"""Analyze failure semantics: semua chunk gagal → FAILED (bukan '0 segmen'
-yang menyesatkan user — kasus nyata: quota Gemini 429 free-tier habis).
+﻿"""Analyze failure semantics: semua chunk gagal â†’ FAILED (bukan '0 segmen'
+yang menyesatkan user â€” kasus nyata: quota Gemini 429 free-tier habis).
 + fallback otomatis ke model cadangan saat 429."""
 import sys
 from pathlib import Path
@@ -61,6 +61,31 @@ def test_analyze_chunk_falls_back_on_quota():
     assert segs == []
 
 
+def test_analyze_chunk_chain_falls_to_last_resort():
+    """3.6 gagal (503) â†’ cadangan terakhir 3.5-flash dipakai."""
+    import stages.analyze as analyze
+
+    calls = []
+
+    def fake_retry(client, sp, ct, model):
+        calls.append(model)
+        if model == "gemini-flash-latest":
+            raise RuntimeError("429 RESOURCE_EXHAUSTED quota")
+        if model == "gemini-3.6-flash":
+            raise RuntimeError("503 UNAVAILABLE high demand")
+        return ([], {})
+
+    orig = analyze._analyze_chunk_retry
+    analyze._analyze_chunk_retry = fake_retry
+    try:
+        segs, _ = analyze.analyze_chunk(None, "sp", "ct", "gemini-flash-latest",
+                                        fallback_model="gemini-3.6-flash")
+    finally:
+        analyze._analyze_chunk_retry = orig
+    assert calls == ["gemini-flash-latest", "gemini-3.6-flash", "gemini-3.5-flash"], calls
+    assert segs == []
+
+
 def test_analyze_chunk_no_fallback_on_other_error():
     import stages.analyze as analyze
 
@@ -87,5 +112,6 @@ if __name__ == "__main__":
     test_no_chunks_processed()
     test_quota_error_detection()
     test_analyze_chunk_falls_back_on_quota()
+    test_analyze_chunk_chain_falls_to_last_resort()
     test_analyze_chunk_no_fallback_on_other_error()
     print("all ok")

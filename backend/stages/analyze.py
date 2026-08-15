@@ -156,15 +156,23 @@ def _analyze_chunk_retry(client, system_prompt: str, chunk_text: str, model: str
 def analyze_chunk(client, system_prompt: str, chunk_text: str, model: str,
                   fallback_model: str | None = None) -> tuple[list[Segment], dict]:
     """analyze_chunk + fallback otomatis: primary kena 429 (kuota harian
-    free-tier per model habis) → coba fallback_model sekali."""
+    free-tier per model habis) → coba fallback_model, lalu cadangan terakhir
+    gemini-3.5-flash (3.6 kadang 503 high-demand)."""
     try:
         return _analyze_chunk_retry(client, system_prompt, chunk_text, model)
     except Exception as e:
-        if fallback_model and _is_quota_error(e):
+        if not _is_quota_error(e):
+            raise
+        for backup in (fallback_model, "gemini-3.5-flash"):
+            if not backup or backup == model:
+                continue
             logger.warning("analyze_quota_fallback",
-                           primary=model, fallback=fallback_model,
+                           primary=model, fallback=backup,
                            error=str(e)[:200])
-            return _analyze_chunk_retry(client, system_prompt, chunk_text, fallback_model)
+            try:
+                return _analyze_chunk_retry(client, system_prompt, chunk_text, backup)
+            except Exception as e2:
+                e = e2
         raise
 
 
@@ -195,15 +203,23 @@ def _caption_batch(client, system_prompt: str, batch: list[Segment], model: str)
 
 def _caption_batch_with_fallback(client, system_prompt: str, batch: list[Segment], model: str,
                                  fallback_model: str | None = None) -> dict[int, str]:
-    """_caption_batch + fallback model saat 429 (kuota primary habis)."""
+    """_caption_batch + fallback model saat 429 (kuota primary habis),
+    cadangan terakhir gemini-3.5-flash (3.6 kadang 503 high-demand)."""
     try:
         return _caption_batch(client, system_prompt, batch, model)
     except Exception as e:
-        if fallback_model and _is_quota_error(e):
+        if not _is_quota_error(e):
+            raise
+        for backup in (fallback_model, "gemini-3.5-flash"):
+            if not backup or backup == model:
+                continue
             logger.warning("caption_quota_fallback",
-                           primary=model, fallback=fallback_model,
+                           primary=model, fallback=backup,
                            error=str(e)[:200])
-            return _caption_batch(client, system_prompt, batch, fallback_model)
+            try:
+                return _caption_batch(client, system_prompt, batch, backup)
+            except Exception as e2:
+                e = e2
         raise
 
 

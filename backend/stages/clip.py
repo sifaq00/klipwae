@@ -174,6 +174,9 @@ class ClipStage(Stage):
             for k, (s, e) in enumerate(ranges):
                 clip_idx = i * 100 + k
                 clip_path = self._clip_path(job_id, clip_idx, seg)
+                first = k == 0
+                last = k == len(ranges) - 1
+                buf = CLIP_BUFFER_SEC if (first or last) else SPLIT_BUFFER_SEC
                 if clip_path.exists():
                     # File sudah dibuat attempt sebelumnya (atau row DB lewat
                     # karena analyze re-run) ? repair: upsert, kalau tidak
@@ -182,13 +185,11 @@ class ClipStage(Stage):
                         job_id, clip_idx,
                         sec_to_hms(s), sec_to_hms(e), seg,
                         str(clip_path),
+                        max(0.0, s - buf), e + buf,
                     )
                     clips_created += 1
                     done_chunks += 1
                     continue
-                first = k == 0
-                last = k == len(ranges) - 1
-                buf = CLIP_BUFFER_SEC if (first or last) else SPLIT_BUFFER_SEC
                 work.append((seg, clip_idx, s, e, clip_path, buf))
 
         # ffmpeg per klip independen ? jalan paralel (bukan guillotine 1-by-1)

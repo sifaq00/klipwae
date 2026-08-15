@@ -622,15 +622,6 @@ function PlayerModal({ seg, index, total, onClose, onPrev, onNext, onToggle, onR
                 <span>{seg.product_mentioned}</span>
               </span>
             )}
-            <span
-              className="chip border border-rose-500/40 bg-black/60 px-2 py-0.5 text-[10px] font-semibold text-rose-300 backdrop-blur inline-flex items-center gap-1"
-              title={seg.virality_reason ? `Potensi Viral: ${seg.virality_reason}` : `Hook Score: ${seg.hook_score ?? 85}/100`}
-            >
-              <svg className="h-3 w-3 text-rose-400 shrink-0" fill="currentColor" viewBox="0 0 24 24">
-                <path d="M17.556 7.847A7.447 7.447 0 0012 4.5a7.447 7.447 0 00-5.556 3.347C5.55 9.255 5 10.82 5 12.5 5 16.642 8.134 20 12 20s7-3.358 7-7.5c0-1.68-.55-3.245-1.444-4.653zM12 18c-2.485 0-4.5-2.015-4.5-4.5 0-.88.253-1.698.688-2.388.384.664.912 1.22 1.547 1.624.282.18.636.07.78-.215a4.473 4.473 0 011.485-1.521c.214-.143.272-.424.13-.637A6.47 6.47 0 0012 8.5c1.933 0 3.5 1.567 3.5 3.5 0 2.485-2.015 6-3.5 6z" />
-              </svg>
-              <span>{seg.hook_score ?? 85}/100</span>
-            </span>
           </div>
           <div className="absolute right-2.5 top-2.5 flex gap-1.5">
             <button onClick={onPrev} disabled={index === 0} className="btn-ghost flex h-8 w-8 items-center justify-center rounded-full p-0 text-xs disabled:opacity-30" title="Klip sebelumnya">

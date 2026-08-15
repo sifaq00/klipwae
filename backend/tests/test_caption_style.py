@@ -53,10 +53,10 @@ def test_available_fonts_metadata():
 
     font_names = [f["name"] for f in AVAILABLE_FONTS]
     assert "Montserrat Black" in font_names
-    assert "Segoe UI Black" in font_names
-    assert "Impact" in font_names
-    assert "Arial Black" in font_names
-    assert "Trebuchet MS" in font_names
+    assert "Poppins Bold" in font_names
+    assert "Anton" in font_names
+    assert "Archivo Black" in font_names
+    assert "Poppins ExtraBold" in font_names
 
     for item in AVAILABLE_FONTS:
         assert "name" in item
@@ -68,9 +68,9 @@ def test_available_fonts_metadata():
 def test_font_name_map():
     from utils.caption_style import FONT_NAME_MAP
     assert FONT_NAME_MAP["Montserrat-Black"] == "Montserrat Black"
-    assert FONT_NAME_MAP["Segoe-UI-Black"] == "Segoe UI Black"
-    assert FONT_NAME_MAP["Arial-Black"] == "Arial Black"
-    assert FONT_NAME_MAP["Trebuchet-MS"] == "Trebuchet MS"
+    assert FONT_NAME_MAP["Segoe-UI-Black"] == "Poppins Bold"  # MS → OFL
+    assert FONT_NAME_MAP["Arial-Black"] == "Archivo Black"
+    assert FONT_NAME_MAP["Trebuchet-MS"] == "Poppins ExtraBold"
 
 
 def test_bundled_assets_fonts_exist():

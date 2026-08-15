@@ -378,8 +378,6 @@ auto-clipper-app/
 │   │   ├── lib/               # API client, stages, clipboard, caption defaults
 │   │   └── main.tsx           # Entry + ErrorBoundary
 │   └── package.json
-└── docs/
-    └── optimization_audit.md  # Performance audit tracker (all items fixed)
 ```
 
 ## Testing

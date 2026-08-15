@@ -24,6 +24,7 @@ class Segment(BaseModel):
     confidence: float = Field(ge=0.0, le=1.0)
     reason: str
     caption_text: str | None = None
+    hook_score: float | None = None
 
 
 class AnalysisResult(BaseModel):
@@ -169,6 +170,42 @@ def overlap_ratio(a: Segment, b: Segment) -> float:
     return overlap / shorter if shorter > 0 else 0.0
 
 
+def deduplicate_overlapping_segments(segments: list[Segment], max_overlap: float = 0.65) -> list[Segment]:
+    """Remove candidate segments that heavily overlap with a higher-priority segment.
+    Keeps segment with higher hook_score / confidence."""
+    if not segments:
+        return []
+    # Sort by hook_score (if available) then confidence desc
+    sorted_segs = sorted(
+        segments,
+        key=lambda s: (getattr(s, "hook_score", 0) or 0, getattr(s, "confidence", 0.0)),
+        reverse=True
+    )
+    kept: list[Segment] = []
+    for s in sorted_segs:
+        s_start = hms_to_sec(s.start)
+        s_end = hms_to_sec(s.end)
+        s_dur = max(0.1, s_end - s_start)
+        overlaps = False
+        for k in kept:
+            k_start = hms_to_sec(k.start)
+            k_end = hms_to_sec(k.end)
+            k_dur = max(0.1, k_end - k_start)
+            # Calculate overlap interval
+            overlap_start = max(s_start, k_start)
+            overlap_end = min(s_end, k_end)
+            if overlap_end > overlap_start:
+                overlap_dur = overlap_end - overlap_start
+                ratio = overlap_dur / min(s_dur, k_dur)
+                if ratio > max_overlap:
+                    overlaps = True
+                    break
+        if not overlaps:
+            kept.append(s)
+    # Restore chronological order
+    return sorted(kept, key=lambda s: hms_to_sec(s.start))
+
+
 def merge_and_dedupe(all_segments: list[Segment], overlap_threshold: float = 0.7) -> list[Segment]:
     """Gabung + buang duplikat: kalau overlap > threshold, ambil confidence
     lebih tinggi."""
@@ -280,6 +317,7 @@ class AnalyzeStage(Stage):
         else:
             pool.shutdown(wait=True)
 
+        all_segments = deduplicate_overlapping_segments(all_segments)
         merged = merge_and_dedupe(all_segments)
         final = [s for s in merged if s.confidence >= config.confidence_threshold]
 

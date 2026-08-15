@@ -4,6 +4,7 @@ from pathlib import Path
 import structlog
 from stages.base import Stage, StageResult, StageStatus
 from stages.registry import register
+from utils.gpu_cleanup import clean_gpu_memory
 
 logger = structlog.get_logger(__name__)
 
@@ -161,3 +162,5 @@ def _render_tracked(clip, camera_path, reframed_path, fps, clip_no: str = "", co
     except Exception as e:
         logger.warning("render_tracked_fallback", error=str(e), clip=clip.name)
         return False
+    finally:
+        clean_gpu_memory()

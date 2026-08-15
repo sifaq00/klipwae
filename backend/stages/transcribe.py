@@ -9,6 +9,7 @@ from pathlib import Path
 from stages.base import Stage, StageResult, StageStatus
 from stages.registry import register
 import runtime
+from utils.gpu_cleanup import clean_gpu_memory
 
 
 def _add_nvidia_dll_paths():
@@ -75,6 +76,7 @@ class TranscribeStage(Stage):
             audio_path, config.whisper_model, config.whisper_device,
             initial_prompt=getattr(config, "whisper_initial_prompt", ""),
         )
+        clean_gpu_memory()
 
         # Kill saat transcribe: JANGAN tulis file partial — kalau ditulis,
         # is_complete (cek file ada) jadi True dan retry skip stage ini,

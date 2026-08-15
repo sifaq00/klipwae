@@ -10,6 +10,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from stages.analyze import (
     Segment,
     chunk_transcript,
+    deduplicate_overlapping_segments,
     format_chunk_for_prompt,
     merge_and_dedupe,
     overlap_ratio,
@@ -82,6 +83,42 @@ def test_merge_and_dedupe():
     merged2 = merge_and_dedupe([a, b, c])
     assert len(merged2) == 2
     print("OK test_merge_and_dedupe")
+
+
+def test_deduplicate_overlapping_segments():
+    # Empty list
+    assert deduplicate_overlapping_segments([]) == []
+
+    # Non-overlapping: chronological order is restored
+    a = _pyd_seg("00:01:00", "00:02:00", conf=0.7)
+    b = _pyd_seg("00:03:00", "00:04:00", conf=0.8)
+    res = deduplicate_overlapping_segments([b, a])
+    assert len(res) == 2
+    assert res[0].start == "00:01:00"
+    assert res[1].start == "00:03:00"
+
+    # Overlapping (>0.65 overlap) - higher confidence kept
+    s1 = _pyd_seg("00:01:00", "00:02:00", conf=0.6)
+    s2 = _pyd_seg("00:01:10", "00:02:00", conf=0.9)
+    res2 = deduplicate_overlapping_segments([s1, s2])
+    assert len(res2) == 1
+    assert res2[0].confidence == 0.9
+
+    # Overlapping (>0.65 overlap) - hook_score takes precedence over confidence
+    s3 = _pyd_seg("00:01:00", "00:02:00", conf=0.95)
+    s4 = _pyd_seg("00:01:05", "00:02:05", conf=0.60)
+    setattr(s3, "hook_score", 5)
+    setattr(s4, "hook_score", 9)
+    res3 = deduplicate_overlapping_segments([s3, s4])
+    assert len(res3) == 1
+    assert getattr(res3[0], "hook_score") == 9
+
+    # Partial overlap under threshold (20s overlap / 60s min dur = 0.33 <= 0.65)
+    s5 = _pyd_seg("00:01:00", "00:02:00", conf=0.7)
+    s6 = _pyd_seg("00:01:40", "00:02:40", conf=0.8)
+    res4 = deduplicate_overlapping_segments([s5, s6])
+    assert len(res4) == 2
+    print("OK test_deduplicate_overlapping_segments")
 
 
 def test_analyze_stage_with_mock(tmp_path: Path):
@@ -183,6 +220,7 @@ if __name__ == "__main__":
     test_format_chunk_for_prompt()
     test_overlap_ratio()
     test_merge_and_dedupe()
+    test_deduplicate_overlapping_segments()
     with tempfile.TemporaryDirectory() as tmp:
         test_analyze_stage_with_mock(Path(tmp))
     print("\nAll analyze tests passed.")

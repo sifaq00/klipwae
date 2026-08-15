@@ -219,15 +219,15 @@ def test_ass_header_viral_fonts():
     fonts_to_test = [
         ("Montserrat Black", "Style: Default,Montserrat Black,96,"),
         ("Montserrat-Black", "Style: Default,Montserrat Black,96,"),
-        ("Segoe UI Black", "Style: Default,Segoe UI Black,96,"),
-        ("Segoe-UI-Black", "Style: Default,Segoe UI Black,96,"),
-        ("Impact", "Style: Default,Impact,96,"),
-        ("Arial Black", "Style: Default,Arial Black,96,"),
-        ("Arial-Black", "Style: Default,Arial Black,96,"),
-        ("Trebuchet MS", "Style: Default,Trebuchet MS,96,"),
-        ("Trebuchet-MS", "Style: Default,Trebuchet MS,96,"),
-        ("Verdana Bold", "Style: Default,Verdana Bold,96,"),
-        ("Verdana-Bold", "Style: Default,Verdana Bold,96,"),
+        ("Segoe UI Black", "Style: Default,Poppins Bold,96,"),  # MS → OFL
+        ("Segoe-UI-Black", "Style: Default,Poppins Bold,96,"),
+        ("Impact", "Style: Default,Anton,96,"),
+        ("Arial Black", "Style: Default,Archivo Black,96,"),
+        ("Arial-Black", "Style: Default,Archivo Black,96,"),
+        ("Trebuchet MS", "Style: Default,Poppins ExtraBold,96,"),
+        ("Trebuchet-MS", "Style: Default,Poppins ExtraBold,96,"),
+        ("Verdana Bold", "Style: Default,Roboto,96,"),
+        ("Verdana-Bold", "Style: Default,Roboto,96,"),
     ]
     for font_input, expected_header_substr in fonts_to_test:
         h = _ass_header(_cfg(font=font_input, size=96))

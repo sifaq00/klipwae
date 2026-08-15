@@ -1,4 +1,4 @@
-import type { CaptionStyle, FontsResponse, Job, Segment } from "../types";
+import type { CaptionStyle, FontsResponse, Job, ScrapeItem, Segment } from "../types";
 
 const BASE = "/api";
 
@@ -17,6 +17,10 @@ async function handle(res: Response): Promise<any> {
 
 export async function listJobs(limit = 200): Promise<Job[]> {
   return handle(await fetch(`${BASE}/jobs?limit=${limit}`));
+}
+
+export async function scrape(q: string): Promise<{ items: ScrapeItem[]; count: number }> {
+  return handle(await fetch(`${BASE}/scrape?q=${encodeURIComponent(q)}`));
 }
 
 export async function getSettings(): Promise<{ video_download_resolution?: number }> {

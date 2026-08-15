@@ -4,6 +4,7 @@ const StyleEditor = lazy(() => import("./components/StyleEditor").then((m) => ({
 import { useConfirm } from "./components/ConfirmDialog";
 import { JobsView } from "./components/JobsView";
 import { JobDetail } from "./components/JobDetail";
+import { ScraperPage } from "./components/ScraperPage";
 import { UrlInput } from "./components/UrlInput";
 import type { CaptionStyle, Job } from "./types";
 import { createJob, deleteJob, getCaptionStyle, getJob, getSettings, listJobs, saveCaptionStyle } from "./lib/api";
@@ -11,6 +12,7 @@ import { createJob, deleteJob, getCaptionStyle, getJob, getSettings, listJobs, s
 export default function App() {
   const { confirm, dialog: confirmDialog } = useConfirm();
   const [jobs, setJobs] = useState<Job[]>([]);
+  const [view, setView] = useState<"studio" | "scraper">("studio");
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
   const [activeJob, setActiveJob] = useState<Job | null>(null);
   const [toast, setToast] = useState<string | null>(null);
@@ -125,6 +127,16 @@ export default function App() {
             Idle
           </span>
         )}
+        <button
+          onClick={() => setView(view === "scraper" ? "studio" : "scraper")}
+          className="chip border border-cyan-400/30 bg-cyan-400/10 text-cyan-300 transition-colors hover:border-cyan-400/60 hover:bg-cyan-400/20"
+          title="Scraper YouTube — cari & tambah link video"
+        >
+          <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M17 10a7 7 0 11-14 0 7 7 0 0114 0z" />
+          </svg>
+          {view === "scraper" ? "Studio" : "Scraper"}
+        </button>
       </header>
 
       {activeJob && activeJobId ? (
@@ -135,6 +147,12 @@ export default function App() {
           onRejected={refresh}
           onDelete={handleDelete}
           videoRes={videoRes}
+        />
+      ) : view === "scraper" ? (
+        <ScraperPage
+          onBack={() => setView("studio")}
+          onAdded={refresh}
+          showToast={showToast}
         />
       ) : (
         <div className="space-y-6">

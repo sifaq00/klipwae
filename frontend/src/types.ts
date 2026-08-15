@@ -1,5 +1,12 @@
-export interface Job {
+export interface ScrapeItem {
   id: string;
+  url: string;
+  title: string;
+  channel: string;
+  duration: number | null;
+}
+
+export interface Job {  id: string;
   url: string;
   title: string | null;
   channel: string | null;

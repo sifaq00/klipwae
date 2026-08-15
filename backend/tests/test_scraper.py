@@ -5,7 +5,10 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from utils.scraper import parse_scrape_output, scrape_youtube, scrape_channel
+from utils.scraper import (
+    parse_scrape_output, scrape_youtube, scrape_channel,
+    score_item, expand_query, scrape_multi,
+)
 
 
 def test_parse_scrape_output_basic():
@@ -78,6 +81,67 @@ def test_scrape_channel_limits_playlist_items():
     args = calls[0]
     assert "--playlist-items" in args
     assert "1-50" in args
+
+
+# ---- Lapis 1+3: skor relevansi, expander Gemini, multi-query ----
+
+def test_score_item_ranks_title_over_description():
+    base = {"id": "x", "title": "", "channel": "", "duration": None, "description": ""}
+    # title match bobot 2x, description 1x
+    t = score_item({**base, "title": "Review Skincare Sponsor Podcast"}, ["skincare", "sponsor"])
+    d = score_item({**base, "description": "review skincare sponsor podcast"}, ["skincare", "sponsor"])
+    assert t > d, f"title harus > description: {t} vs {d}"
+    # case-insensitive
+    assert score_item({**base, "title": "REVIEW SKINCARE"}, ["skincare"]) > 0
+    # tanpa match = 0
+    assert score_item({**base, "title": "Vlog Liburan"}, ["skincare"]) == 0
+
+
+def test_expand_query_uses_gemini_and_falls_back():
+    # fallback: gemini gagal → query asli (harus selalu jalan)
+    with patch("utils.scraper._gemini_expand", side_effect=RuntimeError("no key")):
+        qs = expand_query("podcast skincare sponsor")
+    assert qs == ["podcast skincare sponsor"], f"fallback: {qs}"
+
+    # sukses: parse JSON array
+    class FakeResp:
+        parsed = type("P", (), {"queries": ["q1", "q2", "q3"]})()
+    with patch("utils.scraper._gemini_expand", return_value=FakeResp()):
+        qs = expand_query("cari podcast")
+    assert qs == ["q1", "q2", "q3"]
+
+
+def test_scrape_multi_merges_dedupes_scores_and_caps():
+    fake = type("R", (), {"returncode": 0, "stdout": "", "stderr": ""})()
+
+    def fake_run(args, **kw):
+        q = args[-1]
+        if "q1" in q:
+            out = ("aaa|Podcast Skincare Review|C1|1800|deskripsi sponsor produk\n"
+                   "bbb|Vlog Liburan|C2|600|jalan jalan\n")
+        else:
+            out = ("aaa|Podcast Skincare Review|C1|1800|deskripsi sponsor produk\n"
+                   "ccc|Review Produk Kecantikan|C3|2400|sponsor skincare\n")
+        return type("R", (), {"returncode": 0, "stdout": out, "stderr": ""})()
+
+    with patch("utils.scraper.subprocess.run", fake_run), \
+         patch("utils.scraper.expand_query", return_value=["q1", "q2"]):
+        items = scrape_multi("podcast skincare", limit=5, min_duration=900,
+                             keywords=["skincare", "sponsor", "review"])
+    ids = [i["id"] for i in items]
+    assert ids == ["aaa", "ccc"], f"dedupe + urut skor: {ids}"
+    assert len(items) == 2
+    assert all(i["duration"] is None or i["duration"] >= 900 for i in items)
+    # aaa dapat skor lebih tinggi (3 keyword di title) daripada ccc
+    assert items[0]["score"] > items[1]["score"], items
+
+
+def test_scrape_multi_respects_cap():
+    fake = type("R", (), {"returncode": 0, "stdout": "x|T|C|100|d\n", "stderr": ""})()
+    with patch("utils.scraper.subprocess.run", lambda *a, **k: fake), \
+         patch("utils.scraper.expand_query", return_value=["q"]):
+        items = scrape_multi("q", limit=3, min_duration=0, keywords=["t"])
+    assert len(items) <= 3
 
 
 if __name__ == "__main__":

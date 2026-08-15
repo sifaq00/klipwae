@@ -1,4 +1,4 @@
-import { useState } from "react";
+﻿import { useState } from "react";
 import type { ScrapeItem } from "../types";
 import { scrape, createJob } from "../lib/api";
 
@@ -15,13 +15,14 @@ export function ScraperPage({ onAdded, onBack, showToast }: Props) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [adding, setAdding] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [podcastOnly, setPodcastOnly] = useState(true);
 
   const handleSearch = async () => {
     if (!query.trim()) return;
     setBusy(true);
     setError(null);
     try {
-      const res = await scrape(query.trim());
+      const res = await scrape(query.trim(), podcastOnly ? 900 : 0);
       setItems(res.items);
       setSelected(new Set());
     } catch (e) {
@@ -50,7 +51,7 @@ export function ScraperPage({ onAdded, onBack, showToast }: Props) {
         await createJob(item.url);
         ok += 1;
       } catch {
-        // job duplikat / gagal — lewati, tetap lanjut
+        // job duplikat / gagal â€” lewati, tetap lanjut
       }
     }
     setAdding(false);
@@ -67,12 +68,12 @@ export function ScraperPage({ onAdded, onBack, showToast }: Props) {
             onClick={onBack}
             className="mt-0.5 rounded-lg border border-edge bg-raise/50 px-3 py-2 text-xs font-semibold text-slate-300 transition-colors hover:border-accent/40 hover:text-cyan-300"
           >
-            ← Semua episode
+            â† Semua episode
           </button>
           <div className="min-w-0 flex-1">
             <h1 className="font-display text-lg font-bold text-slate-100">Scraper YouTube</h1>
             <p className="mt-1 text-sm text-slate-500">
-              Deskripsi video yang kamu cari — misal:{" "}
+              Deskripsi video yang kamu cari â€” misal:{" "}
               <button
                 className="text-cyan-400 underline-offset-2 hover:underline"
                 onClick={() => setQuery("podcast indonesia review skincare produk sponsor")}
@@ -99,6 +100,15 @@ export function ScraperPage({ onAdded, onBack, showToast }: Props) {
             {busy ? "Mencari…" : "Cari"}
           </button>
         </div>
+        <label className="mt-3 flex w-fit cursor-pointer items-center gap-2 text-xs text-slate-500">
+          <input
+            type="checkbox"
+            checked={podcastOnly}
+            onChange={(e) => setPodcastOnly(e.target.checked)}
+            className="h-3.5 w-3.5 accent-cyan-500"
+          />
+          Podcast saja (≥ 15 menit) — filter video pendek
+        </label>
         {error && <p className="mt-2 text-xs text-red-400">{error}</p>}
       </div>
 
@@ -106,14 +116,14 @@ export function ScraperPage({ onAdded, onBack, showToast }: Props) {
         <>
           <div className="flex items-center justify-between">
             <span className="text-xs text-slate-500">
-              {items.length} video · pilih yang mau ditambahkan
+              {items.length} video Â· pilih yang mau ditambahkan
             </span>
             <button
               onClick={handleAdd}
               disabled={adding || selected.size === 0}
               className="btn-primary px-4 py-2 text-xs disabled:opacity-50"
             >
-              {adding ? "Menambahkan…" : `Tambah ke Studio (${selected.size})`}
+              {adding ? "Menambahkanâ€¦" : `Tambah ke Studio (${selected.size})`}
             </button>
           </div>
           <div className="space-y-2">
@@ -139,6 +149,11 @@ export function ScraperPage({ onAdded, onBack, showToast }: Props) {
                     {item.duration ? `${Math.floor(item.duration / 60)}m${item.duration % 60}s` : "?m"} · {item.id}
                   </p>
                 </div>
+                {(item.score ?? 0) > 0 && (
+                  <span className="shrink-0 rounded-md border border-amber-400/30 bg-amber-400/10 px-1.5 py-0.5 text-[10px] font-semibold text-amber-300" title="Skor relevansi keyword">
+                    relevan {item.score}
+                  </span>
+                )}
                 <span
                   className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md border text-[10px] ${
                     selected.has(item.id)
@@ -146,7 +161,7 @@ export function ScraperPage({ onAdded, onBack, showToast }: Props) {
                       : "border-edge bg-raise/60 text-transparent"
                   }`}
                 >
-                  ✓
+                  âœ“
                 </span>
               </button>
             ))}

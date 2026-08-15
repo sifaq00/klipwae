@@ -4,6 +4,7 @@ export interface ScrapeItem {
   title: string;
   channel: string;
   duration: number | null;
+  score?: number;
 }
 
 export interface Job {  id: string;

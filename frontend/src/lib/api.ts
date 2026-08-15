@@ -19,8 +19,9 @@ export async function listJobs(limit = 200): Promise<Job[]> {
   return handle(await fetch(`${BASE}/jobs?limit=${limit}`));
 }
 
-export async function scrape(q: string): Promise<{ items: ScrapeItem[]; count: number }> {
-  return handle(await fetch(`${BASE}/scrape?q=${encodeURIComponent(q)}`));
+export async function scrape(q: string, minDuration = 0): Promise<{ items: ScrapeItem[]; count: number }> {
+  const dur = minDuration > 0 ? `&min_duration=${minDuration}` : "";
+  return handle(await fetch(`${BASE}/scrape?q=${encodeURIComponent(q)}${dur}`));
 }
 
 export async function getSettings(): Promise<{ video_download_resolution?: number }> {

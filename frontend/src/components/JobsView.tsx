@@ -114,12 +114,12 @@ function JobCard({ job, index, active, onOpen, onDelete }: { job: Job; index: nu
               {job.channel && (
                 <>
                   <span className="text-slate-300 font-medium truncate max-w-[180px]">{job.channel}</span>
-                  <span className="text-slate-600">Â·</span>
+                  <span className="text-slate-600">·</span>
                 </>
               )}
               <span className="font-mono">{job.id}</span>
-              <span>Â· {fmtDate(job.created_at)}</span>
-              <span>Â· {fmtDuration(job.duration_sec)}</span>
+              <span>· {fmtDate(job.created_at)}</span>
+              <span>· {fmtDuration(job.duration_sec)}</span>
               <span className="chip border border-slate-700/80 bg-slate-800/80 text-slate-300 py-0 px-1.5 text-[10px] font-medium inline-flex items-center gap-1" title={presetMeta.label}>
                 {renderPresetIcon(job.preset || "affiliate", "h-2.5 w-2.5 text-cyan-400")}
                 <span>{presetMeta.shortLabel}</span>

@@ -39,7 +39,7 @@ def test_quota_error_detection():
 
 
 def test_analyze_chunk_falls_back_on_quota():
-    """Primary 429 ? fallback model dipakai; non-429 ? error asli di-propagate."""
+    """Primary 429 -> fallback model dipakai; non-429 -> error asli di-propagate."""
     import stages.analyze as analyze
 
     calls = []
@@ -84,6 +84,55 @@ def test_analyze_chunk_chain_falls_to_last_resort():
         analyze._analyze_chunk_retry = orig
     assert calls == ["gemini-flash-latest", "gemini-3.6-flash", "gemini-3.5-flash"], calls
     assert segs == []
+
+
+def test_tenacity_skips_retry_on_quota_error():
+    """429 tidak boleh di-retry tenacity (predicate skip) -> 1 attempt saja."""
+    import stages.analyze as analyze
+    from unittest.mock import patch
+
+    attempts = {"n": 0}
+
+    class FakeModels:
+        def generate_content(self, **kw):
+            attempts["n"] += 1
+            raise RuntimeError("429 RESOURCE_EXHAUSTED quota")
+
+    class FakeClient:
+        models = FakeModels()
+
+    with patch.object(analyze, "_is_quota_error", return_value=True):
+        try:
+            analyze._analyze_chunk_retry(FakeClient(), "sp", "ct", "m")
+            assert False, "harus raise"
+        except RuntimeError:
+            pass
+    assert attempts["n"] == 1, f"429 harus 1 attempt (tanpa retry), got {attempts['n']}"
+
+
+def test_tenacity_retries_non_quota_three_times():
+    """503/500 tetap di-retry 3x oleh tenacity."""
+    import stages.analyze as analyze
+    from unittest.mock import patch
+
+    attempts = {"n": 0}
+
+    class FakeModels:
+        def generate_content(self, **kw):
+            attempts["n"] += 1
+            raise RuntimeError("ServerError 500")
+
+    class FakeClient:
+        models = FakeModels()
+
+    with patch.object(analyze, "_is_quota_error", return_value=False):
+        import tenacity
+        try:
+            analyze._analyze_chunk_retry(FakeClient(), "sp", "ct", "m")
+            assert False, "harus raise"
+        except tenacity.RetryError:
+            pass
+    assert attempts["n"] == 3, f"503 harus 3 attempt (tenacity), got {attempts['n']}"
 
 
 def test_analyze_chunk_no_fallback_on_other_error():

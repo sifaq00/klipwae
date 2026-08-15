@@ -1,4 +1,4 @@
-﻿export interface ScrapeItem {
+export interface ScrapeItem {
   id: string;
   url: string;
   title: string;

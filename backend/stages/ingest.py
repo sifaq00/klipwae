@@ -34,19 +34,22 @@ class IngestStage(Stage):
         # jadi kehadiran metadata bukan lagi bukti download sukses.
         # File parsial yang nyangkut di bawah ambang ini dianggap belum
         # selesai → retry re-download.
-        # ponytail: window parsial >1MB (kill pas ffmpeg merge) masih lolos —
-        # sempit (hanya fase merge, .part tak match path ini), terima.
         if raw.stat().st_size < 1024 * 1024:
             return False
         if db is None:
             return True
         row = db.conn.execute(
-            "SELECT title, duration_sec, channel FROM jobs WHERE id=?",
+            "SELECT title, duration_sec, channel, downloaded FROM jobs WHERE id=?",
             (job_id,),
         ).fetchone()
         if row is None:
             return False
-        return row["title"] is not None and row["duration_sec"] is not None
+        # downloaded=1 HANYA di-set setelah yt-dlp returncode 0 + metadata
+        # lengkap ter-tulis (mark_downloaded). Metadata + file final tak cukup:
+        # kill pas ffmpeg merge bisa ninggal file parsial >1MB dengan metadata
+        # early-fetch → transcribe akan jalan di video terpotong (SILENT).
+        return (row["title"] is not None and row["duration_sec"] is not None
+                and bool(row["downloaded"]))
 
     def run(self, job_id: str, db, config):
         job = db.conn.execute("SELECT url FROM jobs WHERE id=?", (job_id,)).fetchone()
@@ -59,14 +62,18 @@ class IngestStage(Stage):
         output_path = raw_dir / f"{job_id}.mp4"
 
         if output_path.exists():
-            # File sudah ada — tapi cek metadata juga (konsisten dengan
-            # is_complete). Kalau metadata belum ada, ambil tanpa re-download.
+            # Skip download HANYA kalau marker downloaded=1 — file + metadata
+            # saja tak cukup: file parsial >1MB (kill pas merge) + metadata
+            # early-fetch bisa keduanya hadir. downloaded=0 → re-download
+            # (yt-dlp menimpa file parsial).
             row = db.conn.execute(
-                "SELECT title, duration_sec FROM jobs WHERE id=?", (job_id,)
+                "SELECT title, duration_sec, downloaded FROM jobs WHERE id=?", (job_id,)
             ).fetchone()
-            if row and row["title"] is not None and row["duration_sec"] is not None:
+            if (row and row["title"] is not None and row["duration_sec"] is not None
+                    and row["downloaded"]):
                 return StageResult(status=StageStatus.DONE, output_path=str(output_path))
-            # jatuh ke ambil metadata di bawah
+            # jatuh ke download (atau ambil metadata di bawah kalau path ini
+            # dipanggil dengan file partial — else branch di bawah)
         else:
             # Cek disk space sebelum download (plan Section 10.1) — podcast 2 jam
             # di 720p bisa 500MB-1GB; butuh buffer. Gagal cepat di sini lebih baik

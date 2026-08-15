@@ -14,7 +14,25 @@ from stages.caption import (
     _hex_to_bgr,
     generate_ass,
     CaptionStage,
+    _clip_window,
 )
+
+
+def test_clip_window_uses_actual_offsets():
+    """Bug subtitle telat: caption MENYEBAK offset `start_time - 1.5` —
+    salah utk klip tengah (buf 0.3) → telat 1.2s, dan utk klip yang di-align
+    kalimat (cut mundur). Actual window harus dari DB (clip_start_sec)."""
+    # Klip tengah: start_time=13.0 (post-align), actual cut = 13.0 - 0.3
+    row = {"start_time": "00:00:13", "end_time": "00:00:43",
+           "clip_start_sec": 12.7, "clip_end_sec": 43.3}
+    s, e = _clip_window(row)
+    assert (s, e) == (12.7, 43.3), f"harus actual offsets, got ({s}, {e})"
+
+    # Row LAMA tanpa kolom → fallback lama (buffer 1.5)
+    old = {"start_time": "00:00:13", "end_time": "00:00:43"}
+    s, e = _clip_window(old)
+    assert (s, e) == (11.5, 44.5), f"fallback harus start-1.5, got ({s}, {e})"
+    print("OK test_clip_window_uses_actual_offsets")
 
 
 def _cfg(**over):

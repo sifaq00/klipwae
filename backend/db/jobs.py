@@ -37,6 +37,8 @@ def _ensure_columns(conn: sqlite3.Connection):
             "virality_reason": "TEXT",
             "affiliate_caption": "TEXT",
             "hashtags": "TEXT",
+            "clip_start_sec": "REAL",  # actual window klip (caption butuh offset benar)
+            "clip_end_sec": "REAL",
         }.items():
             if col not in existing:
                 conn.execute(f"ALTER TABLE segments ADD COLUMN {col} {ddl}")
@@ -181,7 +183,8 @@ class JobDB:
             )
         self.conn.commit()
 
-    def upsert_clip_segment(self, job_id: str, clip_idx: int, start: str, end: str, seg, clip_path: str):
+    def upsert_clip_segment(self, job_id: str, clip_idx: int, start: str, end: str, seg, clip_path: str,
+                            clip_start_sec: float | None = None, clip_end_sec: float | None = None):
         """Insert/update segmen hasil split di stage clip. Idempotent per (job_id, clip_idx)."""
         hashtags_val = getattr(seg, "hashtags", None)
         if isinstance(hashtags_val, list):
@@ -193,18 +196,19 @@ class JobDB:
 
         self.conn.execute(
             """INSERT INTO segments (
-                job_id, clip_idx, start_time, end_time, product_mentioned,
-                topic, confidence, reason, caption_text, clip_path,
+                job_id, clip_idx, start_time, end_time, clip_start_sec, clip_end_sec,
+                product_mentioned, topic, confidence, reason, caption_text, clip_path,
                 hook_score, virality_reason, affiliate_caption, hashtags
             )
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             ON CONFLICT(job_id, clip_idx) DO UPDATE SET
               start_time=excluded.start_time, end_time=excluded.end_time,
+              clip_start_sec=excluded.clip_start_sec, clip_end_sec=excluded.clip_end_sec,
               caption_text=excluded.caption_text, clip_path=excluded.clip_path,
               hook_score=excluded.hook_score, virality_reason=excluded.virality_reason,
               affiliate_caption=excluded.affiliate_caption, hashtags=excluded.hashtags""",
             (
-                job_id, clip_idx, start, end,
+                job_id, clip_idx, start, end, clip_start_sec, clip_end_sec,
                 getattr(seg, "product_mentioned", None),
                 getattr(seg, "topic", None),
                 getattr(seg, "confidence", 0.0),

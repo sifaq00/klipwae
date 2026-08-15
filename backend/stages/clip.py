@@ -196,8 +196,12 @@ class ClipStage(Stage):
             if runtime.stop_requested(job_id):
                 return None
             seg, clip_idx, s, e, clip_path, buf = item
-            self._clip_one(raw_video, s, e, clip_path, buf)
-            return seg, clip_idx, s, e, clip_path
+            # Actual cut window (termasuk buffer) — caption butuh offset BENAR,
+            # jangan sampai menebak lagi (subtitle telat 1.2s dulu).
+            actual_start = max(0.0, s - buf)
+            actual_end = e + buf
+            self._clip_one(raw_video, actual_start, actual_end, clip_path, buf)
+            return seg, clip_idx, s, e, clip_path, actual_start, actual_end
 
         import sqlite3
         from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -212,11 +216,11 @@ class ClipStage(Stage):
                     res = fut.result()
                     if res is None:
                         continue
-                    seg, clip_idx, s, e, clip_path = res
+                    seg, clip_idx, s, e, clip_path, act_s, act_e = res
                     db.upsert_clip_segment(
                         job_id, clip_idx,
                         sec_to_hms(s), sec_to_hms(e), seg,
-                        str(clip_path),
+                        str(clip_path), act_s, act_e,
                     )
                     clips_created += 1
                     done_chunks += 1

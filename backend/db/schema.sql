@@ -32,6 +32,8 @@ CREATE TABLE IF NOT EXISTS segments (
     clip_idx           INTEGER,
     start_time         TEXT,
     end_time           TEXT,
+    clip_start_sec     REAL,
+    clip_end_sec       REAL,
     product_mentioned  TEXT,
     topic              TEXT,
     confidence         REAL,

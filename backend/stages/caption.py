@@ -234,6 +234,20 @@ def _group_sentences(words: list[dict], max_words: int = 10, gap_sec: float = 1.
     return sentences
 
 
+def _clip_window(row: dict) -> tuple[float, float]:
+    """Actual window klip di episode-time. Clip.py MOTONG dari
+    (aligned_start - buf) — buf beda per klip (pertama/terakhir 1.5s,
+    tengah 0.3s) dan cut bisa di-align mundur ke awal kalimat. Menebak
+    `start_time - 1.5` bikin subtitle telat 1.2s (klip tengah) atau miring
+    (align). Kolom clip_start_sec/clip_end_sec = source of truth."""
+    s = row.get("clip_start_sec")
+    e = row.get("clip_end_sec")
+    if s is not None and e is not None:
+        return float(s), float(e)
+    # Row lama (belum migrasi): fallback tebakan lama
+    return hms_to_sec(row["start_time"]) - CLIP_BUFFER_SEC, hms_to_sec(row["end_time"]) + CLIP_BUFFER_SEC
+
+
 @register
 class CaptionStage(Stage):
     name = "caption"
@@ -309,9 +323,9 @@ class CaptionStage(Stage):
             if final_path.exists() and ass_path.exists():
                 return 1, row["id"], str(final_path), None
             try:
-                # Ambil kata yang overlap dengan segmen ini (pakai buffer clip)
-                seg_start = hms_to_sec(row["start_time"]) - CLIP_BUFFER_SEC
-                seg_end = hms_to_sec(row["end_time"]) + CLIP_BUFFER_SEC
+                # Ambil kata yang overlap dengan window ACTUAL klip — bukan
+                # tebakan start_time-1.5 (subtitle telat 1.2s di klip tengah).
+                seg_start, seg_end = _clip_window(row)
 
                 # Filter kata yang ada di range segmen
                 clip_words = []

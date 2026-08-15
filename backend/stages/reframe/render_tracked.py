@@ -15,6 +15,21 @@ from utils.ffmpeg_helpers import run_ffmpeg, video_encode_args
 CONF_MIN = 0.35        # box di bawah confidence ini diabaikan
 
 
+def _switch_alpha(prev_side, cur_side, boost_left, base, boost, boost_frames):
+    """Alpha untuk frame ini. Saat side BERUBAH → boost (snap cepat, penonton
+    langsung lihat speaker baru — glide EMA 0.5-1s terasa "kejar-kejaran" di
+    klip multi-speaker). Setelah window boost habis → kembali ke base alpha
+    (follow halus, buang jitter)."""
+    if boost_left > 0:
+        boost_left -= 1
+        if boost_left > 0:
+            return boost, boost_left
+        return base, 0
+    if prev_side is not None and cur_side is not None and cur_side != prev_side:
+        return boost, boost_frames - 1
+    return base, 0
+
+
 def _apply_soft_deadzone(displacement: float, deadband: float) -> float:
     """Calculate excess displacement beyond deadband.
     Starts smoothly from 0.0 at the deadband threshold."""
@@ -101,6 +116,11 @@ def render_tracked(
     db_y = h * deadband
     hold_left = 0
     hold_frames = int(hold_sec * fps)
+    # Harden-on-switch: side ganti → alpha naik sementara (snap cepat ke
+    # speaker baru), lalu kembali halus. Cegah kesan kamera "kejar-kejaran".
+    SWITCH_BOOST_FRAMES = 6
+    switch_boost_left = 0
+    prev_side: str | None = None
     idx = 0
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     while True:
@@ -135,6 +155,14 @@ def render_tracked(
                 box = largest_box_any(boxes_by_frame, idx)
 
             if box:
+                # Harden-on-switch: deteksi side berubah → boost alpha
+                alpha = smooth_alpha
+                if has_path and seg is not None:
+                    alpha, switch_boost_left = _switch_alpha(
+                        prev_side, seg, switch_boost_left,
+                        base=smooth_alpha, boost=0.5, boost_frames=SWITCH_BOOST_FRAMES,
+                    )
+                prev_side = seg if has_path else None
                 bx = (box[1] + box[3]) / 2
                 by = box[2] + (box[4] - box[2]) * head_bias
                 # EMA kedua: target box sendiri dihaluskan dulu (buang jitter deteksi)
@@ -146,9 +174,9 @@ def render_tracked(
                 excess_x = _apply_soft_deadzone(dx, db_x)
                 excess_y = _apply_soft_deadzone(dy, db_y)
                 if excess_x != 0.0:
-                    cx += excess_x * smooth_alpha
+                    cx += excess_x * alpha
                 if excess_y != 0.0:
-                    cy += excess_y * smooth_alpha
+                    cy += excess_y * alpha
                 # Auto-zoom stabil dari ukuran box dengan filter hysteresis
                 box_h = max(1.0, box[4] - box[2])
                 raw_zoom = max(zoom_min, min(zoom_max, (h * zoom_fit) / box_h))

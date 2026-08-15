@@ -104,6 +104,21 @@ def get_preset_prompt(preset: str = "affiliate") -> str:
     raise FileNotFoundError(f"Prompt preset '{preset}' and fallback affiliate preset not found")
 
 
+def analyze_failure_message(chunks_processed: int, chunk_errors: list[str], segments: list) -> str | None:
+    """Semua chunk gagal + 0 segmen → pesan error (bukan notice '0 segmen'
+    yang menyesatkan). 429 → pesan kuota jelas. Sebagian gagal → None
+    (skip chunk, job tetap lanjut)."""
+    if chunks_processed <= 0:
+        return None
+    if len(chunk_errors) != chunks_processed or segments:
+        return None
+    joined = "; ".join(chunk_errors[:2])
+    if "429" in joined or "RESOURCE_EXHAUSTED" in joined:
+        return ("Kuota Gemini habis (429 free-tier, 20 request/hari per model). "
+                "Tunggu reset harian atau upgrade ke paid tier.")
+    return f"Gemini API gagal di semua chunk: {joined[:200]}"
+
+
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=30))
 def analyze_chunk(client, system_prompt: str, chunk_text: str, model: str) -> tuple[list[Segment], dict]:
     """Call Gemini dengan response_schema Pydantic. Return (segments, usage).
@@ -323,15 +338,17 @@ class AnalyzeStage(Stage):
         chunks_processed = 0
         total_chunks = len(chunks)
 
-        def _analyze_one(chunk) -> tuple[list[Segment], dict]:
+        def _analyze_one(chunk) -> tuple[list[Segment], dict, str | None]:
             chunk_text = format_chunk_for_prompt(chunk)
             # analyze_chunk sudah retry 3x sendiri — exception di sini = beneran
             # gagal; skip chunk, JANGAN gagalkan job (plan Section 11).
             try:
-                return analyze_chunk(client, system_prompt, chunk_text, config.analyze_model)
+                segments, usage = analyze_chunk(client, system_prompt, chunk_text, config.analyze_model)
+                return segments, usage, None
             except Exception as e:
-                logger.warning("analyze_chunk_skipped", error=str(e))
-                return [], {"input_tokens": 0, "output_tokens": 0}
+                err = str(e)
+                logger.warning("analyze_chunk_skipped", error=err)
+                return [], {"input_tokens": 0, "output_tokens": 0}, err
 
         # Chunk independen satu sama lain → parallel call Gemini (3 worker).
         # Retry total per chunk tetap 3x (tenacity), hanya wall-clock yang turun.
@@ -340,12 +357,15 @@ class AnalyzeStage(Stage):
         pool = ThreadPoolExecutor(max_workers=getattr(config, "analyze_parallel", 3))
         futs = {pool.submit(_analyze_one, c): c for c in chunks}
         killed = False
+        chunk_errors: list[str] = []
         for i, fut in enumerate(as_completed(futs), 1):
             if runtime.stop_requested():
                 killed = True
                 break  # killed: jangan menunggu chunk tersisa (hemat biaya API)
             print(f"    analyze {i}/{total_chunks} chunks")
-            segments, usage = fut.result()
+            segments, usage, err = fut.result()
+            if err:
+                chunk_errors.append(err)
             all_segments.extend(segments)
             total_cost += calc_cost(usage, config.analyze_model)
             chunks_processed += 1
@@ -355,6 +375,14 @@ class AnalyzeStage(Stage):
             pool.shutdown(wait=False, cancel_futures=True)
             return StageResult(status=StageStatus.FAILED, error="Killed")
         pool.shutdown(wait=True)
+
+        # SEMUA chunk gagal → jangan laporkan "0 segmen" (notice menyesatkan).
+        # Status failed + pesan jelas → user tahu kuota/API bermasalah, bukan
+        # episode-nya yang tak punya produk.
+        failure_msg = analyze_failure_message(chunks_processed, chunk_errors, all_segments)
+        if failure_msg:
+            _write_segments_atomic(job_id, [])
+            return StageResult(status=StageStatus.FAILED, error=failure_msg)
 
         all_segments = deduplicate_overlapping_segments(all_segments)
         merged = merge_and_dedupe(all_segments)

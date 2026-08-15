@@ -369,8 +369,10 @@ def test_analyze_stage_chunk_failure_does_not_fail_job(tmp_path):
             db.close()
             runtime.unregister(threading.get_ident())
 
-        assert result.status.value == "done", f"status={result.status}"
-        assert result.metadata["segments_found"] == 0
+        # SEMUA chunk gagal → FAILED dengan pesan jelas (bukan done + notice
+        # '0 segmen' yang menyesatkan — kasus nyata: quota 429 habis).
+        assert result.status.value == "failed", f"status={result.status}"
+        assert "Gemini API gagal di semua chunk" in result.error, result.error
         out = Path("data/segments/job2.json")
         assert out.exists(), "Output file tetap harus ditulis"
         assert json.loads(out.read_text(encoding="utf-8")) == []

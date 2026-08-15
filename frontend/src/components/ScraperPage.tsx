@@ -1,4 +1,4 @@
-﻿import { useState } from "react";
+import { useState } from "react";
 import type { ScrapeItem } from "../types";
 import { scrape, createJob } from "../lib/api";
 
@@ -51,7 +51,7 @@ export function ScraperPage({ onAdded, onBack, showToast }: Props) {
         await createJob(item.url);
         ok += 1;
       } catch {
-        // job duplikat / gagal â€” lewati, tetap lanjut
+        // job duplikat / gagal — lewati, tetap lanjut
       }
     }
     setAdding(false);
@@ -68,12 +68,12 @@ export function ScraperPage({ onAdded, onBack, showToast }: Props) {
             onClick={onBack}
             className="mt-0.5 rounded-lg border border-edge bg-raise/50 px-3 py-2 text-xs font-semibold text-slate-300 transition-colors hover:border-accent/40 hover:text-cyan-300"
           >
-            â† Semua episode
+            ← Semua episode
           </button>
           <div className="min-w-0 flex-1">
             <h1 className="font-display text-lg font-bold text-slate-100">Scraper YouTube</h1>
             <p className="mt-1 text-sm text-slate-500">
-              Deskripsi video yang kamu cari â€” misal:{" "}
+              Deskripsi video yang kamu cari — misal:{" "}
               <button
                 className="text-cyan-400 underline-offset-2 hover:underline"
                 onClick={() => setQuery("podcast indonesia review skincare produk sponsor")}
@@ -97,7 +97,7 @@ export function ScraperPage({ onAdded, onBack, showToast }: Props) {
             disabled={busy || !query.trim()}
             className="btn-primary shrink-0 px-5 py-3 text-sm disabled:opacity-50"
           >
-            {busy ? "Mencari…" : "Cari"}
+            {busy ? "Mencari�" : "Cari"}
           </button>
         </div>
         <label className="mt-3 flex w-fit cursor-pointer items-center gap-2 text-xs text-slate-500">
@@ -107,7 +107,7 @@ export function ScraperPage({ onAdded, onBack, showToast }: Props) {
             onChange={(e) => setPodcastOnly(e.target.checked)}
             className="h-3.5 w-3.5 accent-cyan-500"
           />
-          Podcast saja (≥ 15 menit) — filter video pendek
+          Podcast saja (= 15 menit) � filter video pendek
         </label>
         {error && <p className="mt-2 text-xs text-red-400">{error}</p>}
       </div>
@@ -116,14 +116,14 @@ export function ScraperPage({ onAdded, onBack, showToast }: Props) {
         <>
           <div className="flex items-center justify-between">
             <span className="text-xs text-slate-500">
-              {items.length} video Â· pilih yang mau ditambahkan
+              {items.length} video · pilih yang mau ditambahkan
             </span>
             <button
               onClick={handleAdd}
               disabled={adding || selected.size === 0}
               className="btn-primary px-4 py-2 text-xs disabled:opacity-50"
             >
-              {adding ? "Menambahkanâ€¦" : `Tambah ke Studio (${selected.size})`}
+              {adding ? "Menambahkan…" : `Tambah ke Studio (${selected.size})`}
             </button>
           </div>
           <div className="space-y-2">
@@ -145,8 +145,8 @@ export function ScraperPage({ onAdded, onBack, showToast }: Props) {
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium text-slate-100">{item.title || "(tanpa judul)"}</p>
                   <p className="mt-0.5 text-xs text-slate-500">
-                    {item.channel ? `${item.channel} · ` : ""}
-                    {item.duration ? `${Math.floor(item.duration / 60)}m${item.duration % 60}s` : "?m"} · {item.id}
+                    {item.channel ? `${item.channel} � ` : ""}
+                    {item.duration ? `${Math.floor(item.duration / 60)}m${item.duration % 60}s` : "?m"} � {item.id}
                   </p>
                 </div>
                 {(item.score ?? 0) > 0 && (
@@ -161,7 +161,7 @@ export function ScraperPage({ onAdded, onBack, showToast }: Props) {
                       : "border-edge bg-raise/60 text-transparent"
                   }`}
                 >
-                  âœ“
+                  ✓
                 </span>
               </button>
             ))}

@@ -112,40 +112,127 @@ thread so kill requests terminate the right process.
 
 ## Requirements
 
-- **Python 3.11+**
-- **Node.js 18+** (frontend)
-- **ffmpeg + ffprobe** on PATH (tested with ffmpeg 8.1+)
-- **yt-dlp** on PATH
-- **Deno** (required by modern yt-dlp for YouTube JS challenge / signatures —
-  `winget install DenoLand.Deno`)
-- **Google Gemini API key** (analysis stage)
-- Optional: NVIDIA GPU with CUDA for fast transcription + NVENC encoding
-- `yolo11n.pt` — downloaded automatically on first use (Ultralytics)
+### Minimum
+
+| Component | Version | Why |
+|-----------|---------|-----|
+| Python | **3.11+** (tested on 3.11.9) | Backend (FastAPI, faster-whisper) |
+| Node.js | **18+** (tested on 20/22) | Frontend (Vite 5) |
+| ffmpeg + ffprobe | **8.1+** (any recent 6.x also works) | All audio/video processing |
+| yt-dlp | latest (2025+) | YouTube download |
+| Deno | latest (2.x) | **Required by modern yt-dlp** for YouTube JS challenge/signature — without it downloads fail with `403 Forbidden` |
+| Google Gemini API key | — | Transcript analysis (only paid requirement) |
+
+### Optional: NVIDIA GPU (strongly recommended)
+
+- **NVIDIA GPU** with at least **4 GB VRAM** (6–8 GB comfortable)
+- **CUDA 12.x** drivers (any recent driver bundle works; you don't need the CUDA
+  Toolkit installed separately — pip wheels bundle the runtime)
+- **NVIDIA cuDNN 9** — required by faster-whisper's CTranslate2
+  (`pip install nvidia-cudnn-cu12` below handles it)
+
+With GPU: transcription ~10× faster, YOLO person tracking runs on CUDA, and
+final render uses NVENC (h264_nvenc). Without GPU everything still works on CPU
+(just slower) — `WHISPER_DEVICE=cpu`.
 
 ## Installation
 
-### 1. Backend
+### Step 1 — Install Python 3.11+
+
+**Windows**
+
+1. Download the installer: https://www.python.org/downloads/
+2. During install, **check "Add python.exe to PATH"**
+3. Verify in a new terminal:
+   ```bat
+   python --version
+   ```
+
+**Linux/macOS**
+```bash
+# Ubuntu/Debian
+sudo apt install python3.11 python3.11-venv python3-pip
+# macOS (homebrew)
+brew install python@3.11
+```
+
+### Step 2 — Install ffmpeg, yt-dlp, Deno
+
+**Windows** (winget):
+```bat
+winget install ffmpeg
+winget install yt-dlp
+winget install DenoLand.Deno
+```
+
+**Linux/macOS**:
+```bash
+# Ubuntu/Debian
+sudo apt install ffmpeg
+pip install --user yt-dlp
+curl -fsSL https://deno.land/install.sh | sh        # then add ~/.deno/bin to PATH
+
+# macOS
+brew install ffmpeg yt-dlp deno
+```
+
+Verify all three are on PATH (each prints a version):
+```bash
+ffmpeg -version
+yt-dlp --version
+deno --version
+```
+
+### Step 3 — Backend (Python venv)
 
 ```bash
 cd backend
 python -m venv .venv
-.venv\Scripts\activate          # Windows
-# source .venv/bin/activate     # Linux/macOS
 
+# Windows:
+.venv\Scripts\activate
+# Linux/macOS:
+source .venv/bin/activate
+
+pip install --upgrade pip
 pip install -e .
 ```
 
-> ffmpeg, ffprobe and yt-dlp must be reachable via PATH. On Windows:
-> `winget install ffmpeg` and `winget install yt-dlp` (or pip install yt-dlp).
+**GPU-only extra steps** (skip if CPU-only):
 
-### 2. Frontend
+1. Install NVIDIA cuDNN 9 (required by faster-whisper on CUDA):
+   ```bash
+   pip install nvidia-cudnn-cu12
+   ```
+   If `faster-whisper` already pulled it as a dependency (check with
+   `pip show faster-whisper`), skip this.
+
+2. Install PyTorch with CUDA support (needed by YOLO person tracking on GPU;
+   pip's default PyTorch is CPU-only):
+   ```bash
+   # Windows (CUDA 12.1):
+   pip install torch --index-url https://download.pytorch.org/whl/cu121
+   # Linux: cu121 or cu124 both fine
+   ```
+
+3. Verify CUDA is visible:
+   ```bash
+   python -c "import torch; print('CUDA:', torch.cuda.is_available())"
+   python -c "import ctranslate2; print('ct2 supports cuda:', ctranslate2.get_cuda_device_count() > 0)"
+   ```
+   Both should print `True`.
+
+> **No GPU?** Do nothing here. Set `WHISPER_DEVICE=cpu` in `.env` (step 5).
+> The reframe stage still works — YOLO falls back to CPU, encoding uses libx264.
+
+### Step 4 — Frontend
 
 ```bash
 cd frontend
 npm install
 ```
 
-### 3. Environment
+### Step 5 — Environment file
 
 ```bash
 cd backend
@@ -153,7 +240,25 @@ copy .env.example .env          # Windows
 # cp .env.example .env          # Linux/macOS
 ```
 
-Then edit `.env` — the only required value is `GOOGLE_API_KEY`.
+Then edit `.env`:
+
+```ini
+GOOGLE_API_KEY=your_key_here     # REQUIRED — get one at https://aistudio.google.com/apikey
+WHISPER_DEVICE=cuda              # change to cpu if no GPU
+MAX_CONCURRENT_JOBS=2            # set 1 if 2 transcriptions OOM your GPU
+```
+
+### Step 6 — Smoke test
+
+```bash
+cd backend
+.venv\Scripts\python.exe -m pytest tests -q   # 166 passed, 6 skipped (GPU)
+```
+
+Optional: pre-download the whisper model once so the first job doesn't wait:
+```bash
+.venv\Scripts\python.exe -c "from faster_whisper import WhisperModel; WhisperModel('large-v3-turbo', device='cuda'); print('model ready')"
+```
 
 ## Configuration
 

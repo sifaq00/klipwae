@@ -26,3 +26,5 @@ docs/superpowers/
 # Runtime state — jobs.db berisi riwayat job, jangan pernah masuk git
 data/
 backend/data/*.db*
+
+docs/

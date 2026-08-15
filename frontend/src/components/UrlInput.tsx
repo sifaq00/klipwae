@@ -1,11 +1,12 @@
 import { useState } from "react";
+import { renderPresetIcon } from "../lib/stages";
 
 export const PRESET_OPTIONS = [
-  { id: "affiliate", label: "Review & Affiliate", shortLabel: "Affiliate", icon: "🛒", desc: "Produk, review, harga & rekomendasi affiliate" },
-  { id: "podcast", label: "Podcast & Debat", shortLabel: "Podcast", icon: "🎙️", desc: "Debat menarik, wawasan mendalam & argumen" },
-  { id: "comedy", label: "Komedi & Lucu", shortLabel: "Komedi", icon: "🎭", desc: "Momen kocak, reaksi seru & punchline" },
-  { id: "education", label: "Edukasi & Tips", shortLabel: "Edukasi", icon: "💡", desc: "Tips praktis, tutorial & ilmu bermanfaat" },
-  { id: "storytelling", label: "Cerita & Kisah", shortLabel: "Cerita", icon: "📖", desc: "Kisah dramatis, pengalaman & plot twist" },
+  { id: "affiliate", label: "Produk Affiliate", shortLabel: "Produk Affiliate", desc: "Produk, review, harga & rekomendasi affiliate" },
+  { id: "podcast", label: "Podcast & Debat", shortLabel: "Podcast", desc: "Debat menarik, wawasan mendalam & argumen" },
+  { id: "comedy", label: "Komedi & Lucu", shortLabel: "Komedi", desc: "Momen kocak, reaksi seru & punchline" },
+  { id: "education", label: "Edukasi & Tips", shortLabel: "Edukasi", desc: "Tips praktis, tutorial & ilmu bermanfaat" },
+  { id: "storytelling", label: "Cerita & Kisah", shortLabel: "Cerita", desc: "Kisah dramatis, pengalaman & plot twist" },
 ];
 
 interface Props {
@@ -56,7 +57,7 @@ export function UrlInput({ onSubmit }: Props) {
                 }`}
                 title={p.desc}
               >
-                <span>{p.icon}</span>
+                {renderPresetIcon(p.id, `h-3.5 w-3.5 shrink-0 ${isSelected ? "text-cyan-300" : "text-slate-400 group-hover:text-slate-200"}`)}
                 <span>{p.label}</span>
               </button>
             );

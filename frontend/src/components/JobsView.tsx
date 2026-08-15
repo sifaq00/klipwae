@@ -1,5 +1,5 @@
 import type { Job } from "../types";
-import { fmtDate, fmtDuration, STAGES, statusMeta, renderStageIcon } from "../lib/stages";
+import { fmtDate, fmtDuration, STAGES, statusMeta, renderStageIcon, renderPresetIcon } from "../lib/stages";
 import { PRESET_OPTIONS } from "./UrlInput";
 
 interface Props {
@@ -119,7 +119,7 @@ function JobCard({ job, index, active, onOpen, onDelete }: { job: Job; index: nu
               <span>· {fmtDate(job.created_at)}</span>
               <span>· {fmtDuration(job.duration_sec)}</span>
               <span className="chip border border-slate-700/80 bg-slate-800/80 text-slate-300 py-0 px-1.5 text-[10px] font-medium inline-flex items-center gap-1" title={presetMeta.label}>
-                <span>{presetMeta.icon}</span>
+                {renderPresetIcon(job.preset || "affiliate", "h-2.5 w-2.5 text-cyan-400")}
                 <span>{presetMeta.shortLabel}</span>
               </span>
               {!!job.segment_count && (

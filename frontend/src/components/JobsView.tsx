@@ -99,11 +99,14 @@ function JobCard({ job, index, active, onOpen, onDelete }: { job: Job; index: nu
               {job.title || `Episode ${job.id}`}
             </h3>
             <button
-              className="shrink-0 rounded px-1.5 py-0.5 text-[11px] text-slate-600 transition-colors hover:bg-red-900/40 hover:text-red-400"
+              className="shrink-0 flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] text-slate-600 transition-colors hover:bg-red-900/40 hover:text-red-400"
               title="Hapus episode + semua file"
               onClick={(e) => { e.stopPropagation(); onDelete(); }}
             >
-              ✕ hapus
+              <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+              </svg>
+              <span>hapus</span>
             </button>
           </div>
 

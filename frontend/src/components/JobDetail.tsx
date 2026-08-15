@@ -175,7 +175,7 @@ export function JobDetail({ job, onBack, onRefresh, onRejected, onDelete, videoR
     try {
       await saveJobCaptionStyle(job.id, style);
       await reburnCaptions(job.id);
-      showToast("Subtitle di-re-burn dengan gaya baru ✨");
+      showToast("Subtitle di-re-burn dengan gaya baru");
       getSegments(job.id).then(setSegments).catch(() => {});
     } catch {
       showToast("Gagal re-burn subtitle");
@@ -212,7 +212,7 @@ export function JobDetail({ job, onBack, onRefresh, onRejected, onDelete, videoR
     try {
       await markSegment(seg.id, field);
       setSegments((prev) => prev.map((x) => (x.id === seg.id ? { ...x, [field]: x[field] ? 0 : 1 } : x)));
-      showToast(field === "reviewed" ? (seg.reviewed ? "Batal review" : "Tandai reviewed") : seg.posted ? "Batal posted" : "Tandai posted 🛒");
+      showToast(field === "reviewed" ? (seg.reviewed ? "Batal review" : "Tandai reviewed") : seg.posted ? "Batal posted" : "Tandai posted");
     } catch { /* ignore */ }
   };
 
@@ -223,7 +223,12 @@ export function JobDetail({ job, onBack, onRefresh, onRejected, onDelete, videoR
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between gap-3">
-        <button className="btn-ghost px-3 py-1.5 text-xs" onClick={onBack}>← Semua episode</button>
+        <button className="btn-ghost flex items-center gap-1 px-3 py-1.5 text-xs" onClick={onBack}>
+          <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+          </svg>
+          <span>Semua episode</span>
+        </button>
         <div className="flex gap-2">
           {job.status === "done" && (
             <button className="btn-ghost px-3 py-1.5 text-xs" onClick={openStyleModal} title="Ubah gaya subtitle episode ini">
@@ -436,7 +441,11 @@ export function JobDetail({ job, onBack, onRefresh, onRejected, onDelete, videoR
           <div className="animate-fadeUp max-h-[88vh] w-full max-w-5xl overflow-y-auto rounded-2xl border border-edge bg-panel p-6" onClick={(e) => e.stopPropagation()}>
             <div className="mb-4 flex items-center justify-between">
               <h3 className="font-display text-lg font-bold text-slate-100">Gaya subtitle — episode ini</h3>
-              <button className="btn-ghost h-8 w-8 rounded-full p-0 text-xs" onClick={() => setStyleOpen(false)}>✕</button>
+              <button className="btn-ghost flex h-8 w-8 items-center justify-center rounded-full p-0 text-xs" onClick={() => setStyleOpen(false)}>
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
             </div>
             <StyleEditor value={style} onChange={setStyle} previewSide="right" />
             <div className="mt-5 flex flex-wrap items-center gap-3 border-t border-edge pt-4">
@@ -585,7 +594,7 @@ function PlayerModal({ seg, index, total, onClose, onPrev, onNext, onToggle, onR
     try {
       await navigator.clipboard.writeText(textToCopy);
       setCopiedCaption(true);
-      onToast?.("Caption tersalin ke clipboard 📋");
+      onToast?.("Caption tersalin ke clipboard");
       setTimeout(() => setCopiedCaption(false), 1600);
     } catch {
       /* ignore */
@@ -606,40 +615,91 @@ function PlayerModal({ seg, index, total, onClose, onPrev, onNext, onToggle, onR
           />
           <div className="absolute left-2.5 top-2.5 flex flex-wrap items-center gap-1.5 max-w-[65%]">
             {seg.product_mentioned && (
-              <span className="chip max-w-full truncate border border-gold/40 bg-black/60 px-2 py-0.5 text-[10px] text-gold backdrop-blur">
-                ★ {seg.product_mentioned}
+              <span className="chip max-w-full truncate border border-gold/40 bg-black/60 px-2 py-0.5 text-[10px] text-gold backdrop-blur inline-flex items-center gap-1">
+                <svg className="h-2.5 w-2.5 text-gold shrink-0" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M12 2l2.4 7.2H22l-6 4.4 2.3 7.1-6.3-4.5-6.3 4.5L8 13.6 2 9.2h7.6z" />
+                </svg>
+                <span>{seg.product_mentioned}</span>
               </span>
             )}
             <span
-              className="chip border border-rose-500/40 bg-black/60 px-2 py-0.5 text-[10px] font-semibold text-rose-300 backdrop-blur"
+              className="chip border border-rose-500/40 bg-black/60 px-2 py-0.5 text-[10px] font-semibold text-rose-300 backdrop-blur inline-flex items-center gap-1"
               title={seg.virality_reason ? `Potensi Viral: ${seg.virality_reason}` : `Hook Score: ${seg.hook_score ?? 85}/100`}
             >
-              🔥 {seg.hook_score ?? 85}/100
+              <svg className="h-3 w-3 text-rose-400 shrink-0" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M17.556 7.847A7.447 7.447 0 0012 4.5a7.447 7.447 0 00-5.556 3.347C5.55 9.255 5 10.82 5 12.5 5 16.642 8.134 20 12 20s7-3.358 7-7.5c0-1.68-.55-3.245-1.444-4.653zM12 18c-2.485 0-4.5-2.015-4.5-4.5 0-.88.253-1.698.688-2.388.384.664.912 1.22 1.547 1.624.282.18.636.07.78-.215a4.473 4.473 0 011.485-1.521c.214-.143.272-.424.13-.637A6.47 6.47 0 0012 8.5c1.933 0 3.5 1.567 3.5 3.5 0 2.485-2.015 6-3.5 6z" />
+              </svg>
+              <span>{seg.hook_score ?? 85}/100</span>
             </span>
           </div>
           <div className="absolute right-2.5 top-2.5 flex gap-1.5">
-            <button onClick={onPrev} disabled={index === 0} className="btn-ghost h-8 w-8 rounded-full p-0 text-xs disabled:opacity-30" title="← Klip sebelumnya">←</button>
-            <button onClick={onNext} disabled={index >= total - 1} className="btn-ghost h-8 w-8 rounded-full p-0 text-xs disabled:opacity-30" title="Klip berikutnya →">→</button>
-            <button onClick={onClose} className="btn-ghost h-8 w-8 rounded-full p-0 text-xs" title="Tutup (Esc)">✕</button>
+            <button onClick={onPrev} disabled={index === 0} className="btn-ghost flex h-8 w-8 items-center justify-center rounded-full p-0 text-xs disabled:opacity-30" title="Klip sebelumnya">
+              <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+            <button onClick={onNext} disabled={index >= total - 1} className="btn-ghost flex h-8 w-8 items-center justify-center rounded-full p-0 text-xs disabled:opacity-30" title="Klip berikutnya">
+              <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+              </svg>
+            </button>
+            <button onClick={onClose} className="btn-ghost flex h-8 w-8 items-center justify-center rounded-full p-0 text-xs" title="Tutup (Esc)">
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
           </div>
         </div>
         <div className="mt-3 flex w-full flex-wrap items-center gap-1.5 rounded-xl border border-edge/60 bg-raise/80 px-2.5 py-2 backdrop-blur">
           <span className="mr-1.5 font-mono text-[11px] text-slate-500">{index + 1}/{total}</span>
-          <button onClick={() => onToggle("reviewed")} className={`flex-1 rounded-lg border px-2 py-1.5 text-[11px] font-semibold transition-all active:scale-[0.97] ${seg.reviewed ? "border-emerald-500/50 bg-emerald-500/15 text-emerald-300" : "border-edge bg-raise/50 text-slate-400 hover:border-emerald-500/40 hover:text-emerald-300"}`}>
-            {seg.reviewed ? "✓ Reviewed" : "Review"}
+          <button
+            onClick={() => onToggle("reviewed")}
+            className={`flex-1 flex items-center justify-center gap-1 rounded-lg border px-2 py-1.5 text-[11px] font-semibold transition-all active:scale-[0.97] ${
+              seg.reviewed
+                ? "border-emerald-500/50 bg-emerald-500/15 text-emerald-300"
+                : "border-edge bg-raise/50 text-slate-400 hover:border-emerald-500/40 hover:text-emerald-300"
+            }`}
+          >
+            {seg.reviewed && (
+              <svg className="h-3.5 w-3.5 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+              </svg>
+            )}
+            <span>{seg.reviewed ? "Reviewed" : "Review"}</span>
           </button>
-          <button onClick={() => onToggle("posted")} className={`flex-1 rounded-lg border px-2 py-1.5 text-[11px] font-semibold transition-all active:scale-[0.97] ${seg.posted ? "border-gold/60 bg-gold/15 text-gold" : "border-edge bg-raise/50 text-slate-400 hover:border-gold/50 hover:text-gold"}`}>
-            {seg.posted ? "🛒 Posted" : "Keranjang 🛒"}
+          <button
+            onClick={() => onToggle("posted")}
+            className={`flex-1 flex items-center justify-center gap-1 rounded-lg border px-2 py-1.5 text-[11px] font-semibold transition-all active:scale-[0.97] ${
+              seg.posted
+                ? "border-gold/60 bg-gold/15 text-gold"
+                : "border-edge bg-raise/50 text-slate-400 hover:border-gold/50 hover:text-gold"
+            }`}
+            title="Posting ke TikTok dengan keranjang kuning"
+          >
+            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
+            </svg>
+            <span>{seg.posted ? "Posted" : "Keranjang"}</span>
           </button>
           {(seg.affiliate_caption || seg.caption_text) && (
             <button
               onClick={handleCopyCaption}
-              className={`rounded-lg border px-2 py-1.5 text-[11px] font-semibold transition-all active:scale-[0.97] ${
-                copiedCaption ? "border-emerald-500/50 bg-emerald-500/15 text-emerald-300" : "border-amber-500/40 bg-amber-500/15 text-amber-300 hover:bg-amber-500/25"
+              className={`flex h-8 w-8 items-center justify-center rounded-lg border text-[11px] font-semibold transition-all active:scale-[0.97] ${
+                copiedCaption
+                  ? "border-emerald-500/50 bg-emerald-500/15 text-emerald-300"
+                  : "border-amber-500/40 bg-amber-500/15 text-amber-300 hover:bg-amber-500/25"
               }`}
-              title="Salin caption affiliate + hashtags"
+              title="Salin caption & hashtag"
             >
-              {copiedCaption ? "✓ Tersalin" : "📋 Salin Caption"}
+              {copiedCaption ? (
+                <svg className="h-4 w-4 text-emerald-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                </svg>
+              ) : (
+                <svg className="h-4 w-4 text-amber-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                </svg>
+              )}
             </button>
           )}
           <button onClick={onReject} className="rounded-lg border border-edge bg-raise/50 px-2 py-1.5 text-[11px] font-semibold text-slate-500 transition-all hover:border-red-500/50 hover:text-red-400 active:scale-[0.97]">Buang</button>
@@ -647,20 +707,26 @@ function PlayerModal({ seg, index, total, onClose, onPrev, onNext, onToggle, onR
             <a
               href={seg.preview_url}
               download
-              className="rounded-lg border border-edge bg-raise/50 px-2.5 py-1.5 text-[11px] font-semibold text-slate-400 transition-all hover:border-teal-400/50 hover:text-teal-300 active:scale-[0.97]"
+              className="flex items-center gap-1.5 rounded-lg border border-edge bg-raise/50 px-2.5 py-1.5 text-[11px] font-semibold text-slate-400 transition-all hover:border-teal-400/50 hover:text-teal-300 active:scale-[0.97]"
               title="Download klip final (vertikal + subtitle)"
             >
-              ⬇ Download
+              <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+              </svg>
+              <span>Download</span>
             </a>
           )}
         </div>
         {seg.virality_reason && (
-          <p className="mt-1 text-center text-[10px] italic text-amber-300/80">
-            💡 {seg.virality_reason}
+          <p className="mt-1 text-center text-[10px] italic text-amber-300/80 flex items-center justify-center gap-1">
+            <svg className="h-3 w-3 text-amber-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+            </svg>
+            <span>{seg.virality_reason}</span>
           </p>
         )}
         <p className="mt-1 text-[10px] text-slate-600">
-          ← → ganti klip · Spasi play/pause · Esc tutup
+          Gunakan tombol panah untuk ganti klip · Spasi play/pause · Esc tutup
         </p>
       </div>
     </div>

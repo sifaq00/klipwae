@@ -150,8 +150,13 @@ export default function App() {
               <div className="border-t border-edge px-5 py-4">
                 <StyleEditor value={style} onChange={setStyle} previewSide="right" />
                 <div className="mt-5 flex flex-wrap items-center gap-3 border-t border-edge pt-4">
-                  <button className="btn-primary px-6 py-2.5 text-sm" onClick={handleSaveStyle}>
-                    {styleSaved ? "✓ Tersimpan" : "Simpan gaya default"}
+                  <button className="btn-primary flex items-center gap-1.5 px-6 py-2.5 text-sm" onClick={handleSaveStyle}>
+                    {styleSaved && (
+                      <svg className="h-4 w-4 text-emerald-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                      </svg>
+                    )}
+                    <span>{styleSaved ? "Tersimpan" : "Simpan gaya default"}</span>
                   </button>
                   <p className="text-xs text-slate-500">
                     Berlaku untuk semua episode baru. Episode yang sudah selesai tidak terpengaruh —

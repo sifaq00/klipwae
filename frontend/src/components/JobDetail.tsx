@@ -254,7 +254,7 @@ export function JobDetail({ job, onBack, onRefresh, onRejected, onDelete, videoR
         </div>
       </div>
 
-      <div className="glass animate-fadeUp p-5">
+      <div className="glass animate-fadeUp p-4 sm:p-4.5">
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
           <span className={`chip border ${meta.color} gap-1.5`}>
             {renderStageIcon(job.status, "h-3.5 w-3.5 shrink-0")}
@@ -492,7 +492,7 @@ function PipelineRail({ stages, jobStatus, videoRes }: { stages: Job["stages"]; 
   for (const s of stages ?? []) byStage[s.stage] = s.status;
 
   return (
-    <div className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+    <div className="mt-3.5 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
       {STAGES.map((s, i) => {
         const st = byStage[s.key] ?? (i === 0 && (jobStatus === "pending" || jobStatus === "downloading") ? "running" : "pending");
         const isActive = st === "running";
@@ -502,9 +502,9 @@ function PipelineRail({ stages, jobStatus, videoRes }: { stages: Job["stages"]; 
         return (
           <div
             key={s.key}
-            className={`relative rounded-xl border p-3 transition-all duration-300 ${
+            className={`relative rounded-xl border px-3 py-2 transition-all duration-200 ${
               isActive
-                ? "border-accent/60 bg-accent/10 shadow-[0_0_20px_rgba(20,184,166,0.15)]"
+                ? "border-accent/60 bg-accent/10 shadow-[0_0_14px_rgba(20,184,166,0.15)]"
                 : isDone
                 ? "border-emerald-500/30 bg-emerald-500/5"
                 : isFailed
@@ -512,9 +512,12 @@ function PipelineRail({ stages, jobStatus, videoRes }: { stages: Job["stages"]; 
                 : "border-edge/60 bg-raise/40"
             }`}
           >
-            <div className="flex items-center justify-between">
-              <span className="font-mono text-[10px] text-slate-500">{String(i + 1).padStart(2, "0")}</span>
-              <div className="flex items-center gap-1">
+            <div className="flex items-center justify-between gap-1.5">
+              <div className={`flex items-center gap-1.5 font-display text-xs font-semibold truncate ${isActive ? "text-white" : isDone ? "text-emerald-300" : isFailed ? "text-red-300" : "text-slate-400"}`}>
+                {renderStageIcon(s.key, `h-3.5 w-3.5 shrink-0 ${isActive ? "text-accent animate-pulse" : isDone ? "text-emerald-400" : isFailed ? "text-red-400" : "text-slate-500"}`)}
+                <span className="truncate">{s.label}</span>
+              </div>
+              <div className="flex items-center shrink-0">
                 {isActive && (
                   <svg className="h-3 w-3 animate-spin text-accent" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
@@ -522,16 +525,15 @@ function PipelineRail({ stages, jobStatus, videoRes }: { stages: Job["stages"]; 
                 )}
                 {isDone && <svg className="h-3.5 w-3.5 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>}
                 {isFailed && <svg className="h-3.5 w-3.5 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" d="M6 18L18 6M6 6l12 12" /></svg>}
+                {!isActive && !isDone && !isFailed && (
+                  <span className="font-mono text-[10px] text-slate-500">{String(i + 1).padStart(2, "0")}</span>
+                )}
               </div>
             </div>
-            <div className={`mt-2 flex items-center gap-1.5 font-display text-xs font-semibold ${isActive ? "text-white" : isDone ? "text-emerald-300" : isFailed ? "text-red-300" : "text-slate-400"}`}>
-              {renderStageIcon(s.key, `h-3.5 w-3.5 shrink-0 ${isActive ? "text-accent animate-pulse" : isDone ? "text-emerald-400" : isFailed ? "text-red-400" : "text-slate-500"}`)}
-              <span>{s.label}</span>
-            </div>
-            <div className="mt-0.5 text-[10px] text-slate-500">
-              {s.key === "ingest" && videoRes ? `yt-dlp · ${videoRes}p` : s.hint}
+            <div className="mt-1 flex items-center justify-between text-[10px] text-slate-500">
+              <span className="truncate">{s.key === "ingest" && videoRes ? `${videoRes}p` : s.hint}</span>
               {isDone && run?.started_at && run?.finished_at && (
-                <span className="text-emerald-400/70"> · {fmtStageDur(run.started_at, run.finished_at)}</span>
+                <span className="text-emerald-400/80 font-mono font-medium ml-1 shrink-0">{fmtStageDur(run.started_at, run.finished_at)}</span>
               )}
             </div>
           </div>

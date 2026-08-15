@@ -253,8 +253,11 @@ class ClipStage(Stage):
         return Path(f"data/clips_raw/{job_id}_{idx:03d}_{slug}_conf{score}.mp4")
 
     def _clip_one(self, raw_video: Path, start_sec: float, end_sec: float, output: Path, buf: float):
-        start = max(0.0, start_sec - buf)
-        end = end_sec + buf
+        # start_sec/end_sec = window ACTUAL (sudah termasuk buf, dihitung di
+        # _do + disimpan ke DB). JANGAN kurangi buf lagi di sini — double
+        # buffer bikin cut ≠ clip_start_sec → subtitle early/late.
+        start = max(0.0, start_sec)
+        end = end_sec
         # ffmpeg -ss sebelum -i = fast seek, tapi kurang akurat frame-exact.
         # -ss setelah -i = slow seek, akurat. Pakai -ss sebelum -i untuk kecepatan
         # (plan Section 10.4 eksplisit: ffmpeg -ss {start} -to {end}).

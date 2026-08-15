@@ -213,6 +213,36 @@ def test_wrap_scales_with_font_size():
                 assert len(visual_line.replace(" ", "")) <= 33, f"line too long: {visual_line}"
 
 
+def test_ass_header_viral_fonts():
+    # Test font mapping and proper formatting with spaces
+    fonts_to_test = [
+        ("Montserrat Black", "Style: Default,Montserrat Black,96,"),
+        ("Montserrat-Black", "Style: Default,Montserrat Black,96,"),
+        ("Segoe UI Black", "Style: Default,Segoe UI Black,96,"),
+        ("Segoe-UI-Black", "Style: Default,Segoe UI Black,96,"),
+        ("Impact", "Style: Default,Impact,96,"),
+        ("Arial Black", "Style: Default,Arial Black,96,"),
+        ("Arial-Black", "Style: Default,Arial Black,96,"),
+        ("Trebuchet MS", "Style: Default,Trebuchet MS,96,"),
+        ("Trebuchet-MS", "Style: Default,Trebuchet MS,96,"),
+        ("Verdana Bold", "Style: Default,Verdana Bold,96,"),
+        ("Verdana-Bold", "Style: Default,Verdana Bold,96,"),
+    ]
+    for font_input, expected_header_substr in fonts_to_test:
+        h = _ass_header(_cfg(font=font_input, size=96))
+        assert expected_header_substr in h, f"Failed for {font_input}: {h}"
+
+
+def test_burn_fontsdir_resolution():
+    backend_dir = Path(__file__).parent.parent
+    fonts_dir = backend_dir / "assets" / "fonts"
+    if not (fonts_dir.exists() and any(fonts_dir.iterdir())):
+        fonts_dir = backend_dir / "fonts"
+    assert fonts_dir.exists()
+    rel_path = fonts_dir.relative_to(backend_dir).as_posix()
+    assert rel_path in ("assets/fonts", "fonts")
+
+
 if __name__ == "__main__":
     test_sanitize_ass_text()
     test_sec_to_ass_time()
@@ -221,6 +251,8 @@ if __name__ == "__main__":
     test_group_sentences_gap()
     test_hex_to_bgr()
     test_ass_header_custom_style()
+    test_ass_header_viral_fonts()
+    test_burn_fontsdir_resolution()
     test_generate_ass_static()
     test_generate_ass_highlight_karaoke_lines()
     test_generate_ass_bounce()

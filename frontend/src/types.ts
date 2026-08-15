@@ -8,6 +8,7 @@ export interface Job {
   failed_stage: string | null;
   error_message: string | null;
   notice?: string | null;
+  preset?: string;
   created_at: string;
   updated_at: string;
   running?: boolean;
@@ -78,4 +79,16 @@ export interface CaptionStyle {
   position: "bottom" | "top";
   margin_v: number;
   style: "highlight" | "static";
+}
+
+export interface FontItem {
+  name: string;
+  label: string;
+  tag: string;
+  sample?: string;
+}
+
+export interface FontsResponse {
+  fonts: string[];
+  available_fonts?: FontItem[];
 }

@@ -1,4 +1,4 @@
-import type { CaptionStyle, Job, Segment } from "../types";
+import type { CaptionStyle, FontsResponse, Job, Segment } from "../types";
 
 const BASE = "/api";
 
@@ -27,12 +27,12 @@ export async function getJob(id: string): Promise<Job> {
   return handle(await fetch(`${BASE}/jobs/${id}`));
 }
 
-export async function createJob(url: string): Promise<{ job_id: string }> {
+export async function createJob(url: string, preset: string = "affiliate"): Promise<{ job_id: string; preset?: string }> {
   return handle(
     await fetch(`${BASE}/jobs`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ url }),
+      body: JSON.stringify({ url, preset }),
     })
   );
 }
@@ -77,9 +77,19 @@ export function streamLog(
   return es;
 }
 
-export async function listFonts(): Promise<string[]> {
+export async function listFonts(): Promise<FontsResponse> {
   const res = await fetch(`${BASE}/fonts`);
-  return (await handle(res)).fonts;
+  const data = await handle(res);
+  if (Array.isArray(data)) {
+    return {
+      fonts: data.map((f: any) => (typeof f === "string" ? f : f.name)),
+      available_fonts: data,
+    };
+  }
+  return {
+    fonts: Array.isArray(data?.fonts) ? data.fonts : [],
+    available_fonts: Array.isArray(data?.available_fonts) ? data.available_fonts : [],
+  };
 }
 
 export async function getCaptionStyle(): Promise<CaptionStyle> {

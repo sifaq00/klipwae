@@ -442,3 +442,14 @@ def test_fallback_caption_with_affiliate():
     assert "Wajib coba ini guys!" in fb
     assert "#racuntiktok #affiliate" in fb
 
+
+def test_get_preset_prompt():
+    from stages.analyze import get_preset_prompt
+    for p in ["affiliate", "podcast", "comedy", "education", "storytelling"]:
+        txt = get_preset_prompt(p)
+        assert txt and len(txt) > 50
+    # Fallback to affiliate/product_detection on unknown
+    fallback = get_preset_prompt("unknown_preset")
+    assert fallback and len(fallback) > 50
+
+

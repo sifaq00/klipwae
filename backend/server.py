@@ -164,9 +164,10 @@ _STDOUT_PROXY = None
 class JobRunner:
     _thread_streams: dict[int, _LogStream] = {}  # thread ident â†’ stream job-nya
 
-    def __init__(self, job_id: str, url: str):
+    def __init__(self, job_id: str, url: str, preset: str = "affiliate"):
         self.job_id = job_id
         self.url = url
+        self.preset = preset or "affiliate"
         self.thread: threading.Thread | None = None
         self.log_buffer: deque[tuple[int, str]] = deque(maxlen=500)
         self._log_event = threading.Event()
@@ -186,7 +187,7 @@ class JobRunner:
         _install_stdout_proxy()
         try:
             runtime.set_job(self.job_id)
-            db.create_job(self.job_id, self.url)
+            db.create_job(self.job_id, self.url, preset=self.preset)
             run_pipeline(self.job_id, db, config, log_func=self._log)
         finally:
             JobRunner._thread_streams.pop(threading.get_ident(), None)
@@ -289,8 +290,12 @@ app.mount("/clips", StaticFiles(directory=str(DATA_DIR)), name="clips")
 # â”€â”€â”€ Models â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 
-class CreateJobRequest(BaseModel):
+class JobCreate(BaseModel):
     url: str
+    preset: str = "affiliate"
+
+
+CreateJobRequest = JobCreate
 
 
 class SettingsUpdate(BaseModel):
@@ -299,7 +304,16 @@ class SettingsUpdate(BaseModel):
     google_api_key: str | None = None
 
 
-# â”€â”€â”€ Endpoints â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ─── Helpers ─────────────────────────────────────────────────────────────
+
+
+def _job_json(job: dict) -> dict:
+    if not job.get("preset"):
+        job["preset"] = "affiliate"
+    return job
+
+
+# ─── Endpoints ───────────────────────────────────────────────────────────
 
 
 @app.get("/api/health")
@@ -308,7 +322,7 @@ async def health():
 
 
 @app.post("/api/jobs")
-async def create_job(body: CreateJobRequest):
+async def create_job(body: JobCreate):
     if not is_valid_youtube_url(body.url):
         raise HTTPException(400, "Invalid YouTube URL")
     video_id = extract_video_id(body.url)
@@ -325,13 +339,14 @@ async def create_job(body: CreateJobRequest):
             f"Masih ada {active} job berjalan (maks {config.max_concurrent_jobs}). Tunggu selesai atau kill dulu.",
         )
 
-    runner = JobRunner(video_id, body.url)
+    preset = body.preset or "affiliate"
+    runner = JobRunner(video_id, body.url, preset=preset)
     JOB_RUNNERS[video_id] = runner
     # INSERT dulu: _fetch_meta_early (UPDATE) tak boleh kalah sama INSERT
     # runner thread → kalau 0 rows, title awal diam-diam hilang.
     db0 = JobDB()
     try:
-        db0.create_job(video_id, body.url)
+        db0.create_job(video_id, body.url, preset=preset)
     finally:
         db0.close()
     runner.start()
@@ -340,7 +355,7 @@ async def create_job(body: CreateJobRequest):
     # download selesai. Ingest tetap ambil metadata lagi setelah download
     # (fallback konsisten, update idempoten).
     threading.Thread(target=_fetch_meta_early, args=(video_id, body.url), daemon=True).start()
-    return {"job_id": video_id, "status": "started"}
+    return {"job_id": video_id, "status": "started", "preset": preset}
 
 
 def _fetch_meta_early(job_id: str, url: str):
@@ -377,7 +392,7 @@ async def list_jobs():
         ).fetchall()
         result = []
         for r in rows:
-            job = dict(r)
+            job = _job_json(dict(r))
             runner = JOB_RUNNERS.get(job["id"])
             job["running"] = runner is not None and runner.is_alive
             result.append(job)
@@ -395,7 +410,7 @@ async def get_job(job_id: str):
         ).fetchone()
         if not row:
             raise HTTPException(404, "Job not found")
-        job = dict(row)
+        job = _job_json(dict(row))
         runner = JOB_RUNNERS.get(job_id)
         job["running"] = runner is not None and runner.is_alive
         stages = db.conn.execute(
@@ -498,15 +513,17 @@ async def retry_job(job_id: str):
     db = JobDB()
     try:
         row = db.conn.execute(
-            "SELECT url FROM jobs WHERE id=?", (job_id,)
+            "SELECT * FROM jobs WHERE id=?", (job_id,)
         ).fetchone()
         if not row:
             raise HTTPException(404, "Job not found")
         db.mark_job_status(job_id, "pending", failed_stage=None, error=None)
+        row_dict = dict(row)
+        preset = row_dict.get("preset") or "affiliate"
     finally:
         db.close()
 
-    runner = JobRunner(job_id, row["url"])
+    runner = JobRunner(job_id, row_dict["url"], preset=preset)
     JOB_RUNNERS[job_id] = runner
     runner.start()
     return {"job_id": job_id, "status": "restarted"}
@@ -718,6 +735,7 @@ def _set_env(path: Path, key: str, value: str):
 
 
 FONT_DIRS = [
+    Path(__file__).parent / "assets" / "fonts",
     Path(__file__).parent / "fonts",  # bundle project (Poppins, Montserrat, dll)
     Path(os.environ.get("WINDIR", r"C:\Windows")) / "Fonts",
     Path(os.environ.get("LOCALAPPDATA", "")) / "Microsoft" / "Windows" / "Fonts",
@@ -741,7 +759,7 @@ def _font_families() -> list[str]:
     for d in FONT_DIRS:
         if not d.exists():
             continue
-        bundled = d == FONT_DIRS[0]
+        bundled = d in (FONT_DIRS[0], FONT_DIRS[1])
         for f in list(d.glob("*.ttf")) + list(d.glob("*.otf")):
             try:
                 with TTFont(str(f), fontNumber=0, lazy=True) as tt:
@@ -759,7 +777,11 @@ def _font_families() -> list[str]:
 
 @app.get("/api/fonts")
 async def list_fonts():
-    return {"fonts": _font_families()}
+    from utils.caption_style import AVAILABLE_FONTS
+    return {
+        "fonts": _font_families(),
+        "available_fonts": AVAILABLE_FONTS,
+    }
 
 
 @app.post("/api/caption-style/preview")
@@ -797,9 +819,16 @@ async def caption_style_preview(body: dict):
     # run_in_executor: ffmpeg sync (up to 60s) di thread pool — kalau
     # dieksekusi inline, SEMUA SSE stream (log job, progress) ikut beku.
     def _render() -> int:
+        fonts_opt = ""
+        fonts_dir = DATA_DIR.parent / "assets" / "fonts"
+        if not (fonts_dir.exists() and any(fonts_dir.iterdir())):
+            fonts_dir = DATA_DIR.parent / "fonts"
+        if fonts_dir.exists() and any(fonts_dir.iterdir()):
+            fonts_opt = f":fontsdir={fonts_dir.relative_to(DATA_DIR.parent).as_posix()}"
+
         return run_ffmpeg([
             "-f", "lavfi", "-i", "color=c=0x0d0d18:s=1080x1920:r=30:d=4",
-            "-vf", f"subtitles={ass_path.relative_to(DATA_DIR.parent).as_posix()}:fontsdir=fonts",
+            "-vf", f"subtitles={ass_path.relative_to(DATA_DIR.parent).as_posix()}{fonts_opt}",
             "-frames:v", "1",
             str((out_dir / "_style_preview.png").relative_to(DATA_DIR.parent).as_posix()),
         ], timeout=60, cwd=str(DATA_DIR.parent)).returncode

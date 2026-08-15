@@ -1,5 +1,6 @@
 import type { Job } from "../types";
 import { fmtDate, fmtDuration, STAGES, statusMeta, renderStageIcon } from "../lib/stages";
+import { PRESET_OPTIONS } from "./UrlInput";
 
 interface Props {
   jobs: Job[];
@@ -76,6 +77,7 @@ export function JobsView({ jobs, activeJob, onOpen, onDelete }: Props) {
 function JobCard({ job, index, active, onOpen, onDelete }: { job: Job; index: number; active: boolean; onOpen: () => void; onDelete: () => void }) {
   const meta = statusMeta(job.status);
   const stageIdx = STAGES.findIndex((s) => s.key === (STATUS_TO_STAGE[job.status] ?? job.status));
+  const presetMeta = PRESET_OPTIONS.find((p) => p.id === (job.preset || "affiliate")) || PRESET_OPTIONS[0];
 
   return (
     <div
@@ -116,6 +118,10 @@ function JobCard({ job, index, active, onOpen, onDelete }: { job: Job; index: nu
               <span className="font-mono">{job.id}</span>
               <span>· {fmtDate(job.created_at)}</span>
               <span>· {fmtDuration(job.duration_sec)}</span>
+              <span className="chip border border-slate-700/80 bg-slate-800/80 text-slate-300 py-0 px-1.5 text-[10px] font-medium inline-flex items-center gap-1" title={presetMeta.label}>
+                <span>{presetMeta.icon}</span>
+                <span>{presetMeta.shortLabel}</span>
+              </span>
               {!!job.segment_count && (
                 <span className="chip border border-accent/30 bg-accent/10 text-cyan-300 py-0 px-1.5 text-[10px]">
                   <svg className="h-2.5 w-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>

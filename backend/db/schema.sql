@@ -8,6 +8,8 @@ CREATE TABLE IF NOT EXISTS jobs (
     failed_stage   TEXT,
     error_message  TEXT,
     notice         TEXT,
+    downloaded     INTEGER NOT NULL DEFAULT 0,
+    preset         TEXT DEFAULT 'affiliate',
     created_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );

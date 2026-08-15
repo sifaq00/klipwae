@@ -1,0 +1,39 @@
+Kamu menganalisis transkrip podcast Bahasa Indonesia untuk menemukan segmen
+terbaik yang memuat perdebatan seru, argumen kontroversial, wawasan mendalam (deep insights),
+opini counter-intuitive, atau pemikiran kritis yang memancing diskusi.
+
+Balas HANYA dengan JSON sesuai skema, tanpa teks lain, tanpa markdown fence:
+{
+  "segments": [
+    {
+      "start": "HH:MM:SS", "end": "HH:MM:SS",
+      "product_mentioned": "string atau null",
+      "topic": "ringkasan 1 kalimat topik perdebatan / pemikiran",
+      "confidence": <0.0-1.0>,
+      "reason": "alasan singkat mengapa momen ini kuat",
+      "hook_score": <0-100>,
+      "virality_reason": "alasan potensi viral (mis. memicu perdebatan di kolom komentar)",
+      "affiliate_caption": "caption singkat memancing engagement + emoji + pertanyaan pemantik",
+      "hashtags": ["#tag1", "#tag2", "#tag3"]
+    }
+  ]
+}
+
+Aturan product_mentioned:
+- Isi dengan tokoh, konsep, buku, atau istilah khusus yang menjadi subjek perdebatan jika relevan (mis. "Mental Model First Principles", "Buku Atomic Habits"), atau null jika diskusi murni opini.
+
+Aturan confidence:
+- >0.8: argumen sangat solid, tensi debat tinggi, atau wawasan langka/kontroversial yang sangat kuat
+- 0.5-0.8: poin diskusi menarik dengan elaborasi cukup
+- <0.5: obrolan santai biasa tanpa perdebatan atau insight berarti (JANGAN dimasukkan)
+
+Aturan Hook Score & Viral Copy:
+- hook_score: Nilai integer 0-100 kekuatan hook pembuka dan potensi viralitas (85-100 = opini kontroversial kuat, kalimat pembuka menggugah, atau kesimpulan berani).
+- virality_reason: Alasan klip ini akan membuat audiens tergerak untuk berkomentar, membagikan, atau berdebat.
+- affiliate_caption: Caption hook pendek dan tajam yang diakhiri pertanyaan pancingan interaksi (contoh: "Setuju gak sama statement ini? Tulis pendapatmu di bawah! 👇🧠").
+- hashtags: 3-5 hashtag relevan untuk audiens podcast, mindset, dan diskusi (misal: ["#podcastindonesia", "#debatseru", "#mindset", "#insight", "#fyp"]).
+
+Kalau tidak ada segmen yang layak sama sekali, balas {"segments": []}.
+Jangan reka-reka timestamp di luar yang ada di transkrip input.
+
+Format input: setiap baris berformat `[HH:MM:SS] teks`.

@@ -51,6 +51,10 @@ def _ensure_columns(conn: sqlite3.Connection):
             conn.execute("ALTER TABLE jobs ADD COLUMN caption_style TEXT")
         if "notice" not in job_cols:
             conn.execute("ALTER TABLE jobs ADD COLUMN notice TEXT")
+        if "downloaded" not in job_cols:
+            conn.execute("ALTER TABLE jobs ADD COLUMN downloaded INTEGER NOT NULL DEFAULT 0")
+        if "preset" not in job_cols:
+            conn.execute("ALTER TABLE jobs ADD COLUMN preset TEXT DEFAULT 'affiliate'")
     conn.commit()
 
 
@@ -62,12 +66,24 @@ class JobDB:
     def close(self):
         self.conn.close()
 
-    def create_job(self, job_id: str, url: str):
+    def create_job(self, job_id: str, url: str, preset: str = "affiliate"):
         self.conn.execute(
-            "INSERT OR IGNORE INTO jobs (id, url) VALUES (?, ?)",
-            (job_id, url),
+            "INSERT INTO jobs (id, url, preset) VALUES (?, ?, ?) "
+            "ON CONFLICT(id) DO UPDATE SET preset=coalesce(excluded.preset, jobs.preset)",
+            (job_id, url, preset or "affiliate"),
         )
         self.conn.commit()
+
+    def get_job(self, job_id: str) -> dict | None:
+        row = self.conn.execute(
+            "SELECT * FROM jobs WHERE id=?", (job_id,)
+        ).fetchone()
+        if not row:
+            return None
+        d = dict(row)
+        if not d.get("preset"):
+            d["preset"] = "affiliate"
+        return d
 
     def update_job_metadata(self, job_id: str, title: Optional[str] = None, duration_sec: Optional[int] = None, channel: Optional[str] = None):
         self.conn.execute(
@@ -89,6 +105,17 @@ class JobDB:
         self.conn.execute(
             "UPDATE jobs SET notice=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
             (notice, job_id),
+        )
+        self.conn.commit()
+
+    def mark_downloaded(self, job_id: str):
+        """Ditandai HANYA setelah yt-dlp sukses + metadata lengkap ter-tulis.
+        is_complete butuh flag ini: metadata bisa muncul duluan dari
+        early-fetch (POST), file final >1MB bisa parsial (kill pas merge) —
+        keduanya bukan bukti download sukses."""
+        self.conn.execute(
+            "UPDATE jobs SET downloaded=1, updated_at=CURRENT_TIMESTAMP WHERE id=?",
+            (job_id,),
         )
         self.conn.commit()
 

@@ -1,11 +1,20 @@
 import { useState } from "react";
 
+export const PRESET_OPTIONS = [
+  { id: "affiliate", label: "Review & Affiliate", shortLabel: "Affiliate", icon: "🛒", desc: "Produk, review, harga & rekomendasi affiliate" },
+  { id: "podcast", label: "Podcast & Debat", shortLabel: "Podcast", icon: "🎙️", desc: "Debat menarik, wawasan mendalam & argumen" },
+  { id: "comedy", label: "Komedi & Lucu", shortLabel: "Komedi", icon: "🎭", desc: "Momen kocak, reaksi seru & punchline" },
+  { id: "education", label: "Edukasi & Tips", shortLabel: "Edukasi", icon: "💡", desc: "Tips praktis, tutorial & ilmu bermanfaat" },
+  { id: "storytelling", label: "Cerita & Kisah", shortLabel: "Cerita", icon: "📖", desc: "Kisah dramatis, pengalaman & plot twist" },
+];
+
 interface Props {
-  onSubmit: (url: string) => Promise<void>;
+  onSubmit: (url: string, preset: string) => Promise<void>;
 }
 
 export function UrlInput({ onSubmit }: Props) {
   const [url, setUrl] = useState("");
+  const [preset, setPreset] = useState("affiliate");
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
 
@@ -14,7 +23,7 @@ export function UrlInput({ onSubmit }: Props) {
     setLoading(true);
     setErr("");
     try {
-      await onSubmit(url.trim());
+      await onSubmit(url.trim(), preset);
       setUrl("");
     } catch (e: unknown) {
       setErr(e instanceof Error ? e.message : "Gagal membuat job");
@@ -23,8 +32,38 @@ export function UrlInput({ onSubmit }: Props) {
     }
   };
 
+  const selectedPresetObj = PRESET_OPTIONS.find((p) => p.id === preset) || PRESET_OPTIONS[0];
+
   return (
-    <div className="animate-fadeUp">
+    <div className="animate-fadeUp space-y-3">
+      {/* Preset Selector Chips */}
+      <div className="flex flex-wrap items-center gap-1.5">
+        <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 mr-1 shrink-0">
+          Niche Preset:
+        </span>
+        <div className="flex flex-wrap items-center gap-1.5">
+          {PRESET_OPTIONS.map((p) => {
+            const isSelected = preset === p.id;
+            return (
+              <button
+                key={p.id}
+                type="button"
+                onClick={() => setPreset(p.id)}
+                className={`group relative flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-medium transition-all duration-200 ${
+                  isSelected
+                    ? "bg-accent/20 text-cyan-300 border border-accent/60 shadow-[0_0_12px_rgba(0,242,254,0.25)] font-semibold scale-[1.02]"
+                    : "bg-raise/80 text-slate-400 border border-edge/80 hover:text-slate-200 hover:border-slate-600 hover:bg-raise"
+                }`}
+                title={p.desc}
+              >
+                <span>{p.icon}</span>
+                <span>{p.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
       <div className="relative">
         <div className="absolute -inset-0.5 rounded-2xl bg-gradient-to-r from-accent/40 via-sky-500/30 to-neon/40 opacity-70 blur-md transition-opacity duration-300 group-hover:opacity-100" />
         <div className="glass relative flex gap-2 p-2">
@@ -37,14 +76,14 @@ export function UrlInput({ onSubmit }: Props) {
           </svg>
           <input
             className="flex-1 bg-transparent font-mono text-sm placeholder:text-slate-500 focus:outline-none"
-            placeholder="Tempel link YouTube podcast — biarkan AI memotong bagian produk…"
+            placeholder="Tempel link YouTube podcast — AI akan memotong klip terbaik sesuai preset niche..."
             value={url}
             onChange={(e) => setUrl(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && handle()}
             spellCheck={false}
           />
           <button
-            className="btn-primary px-5 py-2.5 text-sm"
+            className="btn-primary px-5 py-2.5 text-sm shrink-0"
             disabled={loading || !url.trim()}
             onClick={handle}
           >
@@ -70,8 +109,8 @@ export function UrlInput({ onSubmit }: Props) {
       {err && (
         <p className="mt-2 animate-fadeUp text-xs text-red-400">⚠ {err}</p>
       )}
-      <p className="mt-3 text-xs text-slate-500">
-        Pipeline otomatis: download → transkrip → deteksi produk → klip 30–60 dtk → vertikal → subtitle karaoke
+      <p className="mt-2 text-xs text-slate-500">
+        Pipeline otomatis: download → transkrip → AI analysis ({selectedPresetObj.label}) → klip 30–60 dtk → vertikal → subtitle karaoke
       </p>
     </div>
   );

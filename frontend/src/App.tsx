@@ -67,10 +67,10 @@ export default function App() {
     };
   }, [activeJobId]);
 
-  const handleSubmit = async (url: string) => {
-    const { job_id } = await createJob(url);
+  const handleSubmit = async (url: string, preset: string = "affiliate") => {
+    const { job_id } = await createJob(url, preset);
     // Jangan auto-lock ke detail — user bebas scroll home sambil job jalan
-    showToast(`Job ${job_id} dimulai — pantau dari kartu di bawah`);
+    showToast(`Job ${job_id} (${preset}) dimulai — pantau dari kartu di bawah`);
     refresh();
   };
 

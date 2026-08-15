@@ -84,6 +84,28 @@ def format_chunk_for_prompt(chunk: list[SimpleNamespace]) -> str:
     return "\n".join(lines)
 
 
+def get_preset_prompt(preset: str = "affiliate") -> str:
+    """Load system prompt for the specified niche preset.
+    Falls back to product_detection.txt if preset is missing or not found."""
+    p_name = (preset or "affiliate").lower().strip()
+    candidates = [
+        Path("backend/prompts/presets") / f"{p_name}.txt",
+        Path("prompts/presets") / f"{p_name}.txt",
+        Path(__file__).resolve().parent.parent / "prompts" / "presets" / f"{p_name}.txt",
+        # Fallbacks
+        Path("prompts/product_detection.txt"),
+        Path("backend/prompts/product_detection.txt"),
+        Path(__file__).resolve().parent.parent / "prompts" / "product_detection.txt",
+        Path("backend/prompts/presets/affiliate.txt"),
+        Path("prompts/presets/affiliate.txt"),
+        Path(__file__).resolve().parent.parent / "prompts" / "presets" / "affiliate.txt",
+    ]
+    for c in candidates:
+        if c.exists() and c.is_file():
+            return c.read_text(encoding="utf-8")
+    raise FileNotFoundError(f"Prompt preset '{preset}' and fallback prompts not found")
+
+
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=30))
 def analyze_chunk(client, system_prompt: str, chunk_text: str, model: str) -> tuple[list[Segment], dict]:
     """Call Gemini dengan response_schema Pydantic. Return (segments, usage).
@@ -286,8 +308,17 @@ class AnalyzeStage(Stage):
             db.record_metric(job_id, stage="analyze", cost_usd=0.0, extra={"segments_found": 0, "chunks_processed": 0})
             return StageResult(status=StageStatus.DONE, metadata={"segments_found": 0})
 
+        preset = "affiliate"
+        if db is not None:
+            try:
+                job = db.get_job(job_id) if hasattr(db, "get_job") else None
+                if job and isinstance(job, dict) and job.get("preset"):
+                    preset = job["preset"]
+            except Exception as e:
+                logger.warning("failed_to_get_job_preset", job_id=job_id, error=str(e))
+
         client = genai.Client(api_key=config.google_api_key)
-        system_prompt = Path("prompts/product_detection.txt").read_text(encoding="utf-8")
+        system_prompt = get_preset_prompt(preset)
 
         all_segments: list[Segment] = []
         total_cost = 0.0

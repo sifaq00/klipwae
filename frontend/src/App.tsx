@@ -1,4 +1,4 @@
-﻿import { lazy, Suspense, useCallback, useEffect, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useState } from "react";
 import { defaultStyle } from "./lib/captionDefaults";
 const StyleEditor = lazy(() => import("./components/StyleEditor").then((m) => ({ default: m.StyleEditor })));
 import { useConfirm } from "./components/ConfirmDialog";
@@ -74,8 +74,8 @@ export default function App() {
 
   const handleSubmit = async (url: string, preset: string = "affiliate") => {
     const { job_id } = await createJob(url, preset);
-    // Jangan auto-lock ke detail â€” user bebas scroll home sambil job jalan
-    showToast(`Job ${job_id} (${preset}) dimulai â€” pantau dari kartu di bawah`);
+    // Jangan auto-lock ke detail — user bebas scroll home sambil job jalan
+    showToast(`Job ${job_id} (${preset}) dimulai — pantau dari kartu di bawah`);
     refresh();
   };
 
@@ -108,7 +108,7 @@ export default function App() {
               <span className="text-slate-300">Studio</span>
             </h1>
             <p className="text-[11px] font-medium text-slate-400">
-              Podcast â†’ klip produk â†’ siap keranjang kuning
+              Podcast → klip produk → siap keranjang kuning
             </p>
           </div>
         </div>
@@ -116,7 +116,7 @@ export default function App() {
         <button
           onClick={() => setView(view === "scraper" ? "studio" : "scraper")}
           className="chip border border-cyan-400/30 bg-cyan-400/10 text-cyan-300 transition-colors hover:border-cyan-400/60 hover:bg-cyan-400/20"
-          title="Scraper YouTube — cari & tambah link video"
+          title="Scraper YouTube � cari & tambah link video"
         >
           <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M17 10a7 7 0 11-14 0 7 7 0 0114 0z" />
@@ -170,7 +170,7 @@ export default function App() {
                   <path strokeLinecap="round" strokeLinejoin="round" d="M3 5h12M9 3v4m1 4h10m-6 4v4m3-2h3m-12-2h.01M6 15h.01" />
                 </svg>
                 Gaya subtitle default
-                <span className="text-[11px] font-normal text-slate-500">â€” berlaku untuk semua episode baru</span>
+                <span className="text-[11px] font-normal text-slate-500">— berlaku untuk semua episode baru</span>
               </span>
               <svg className={`h-4 w-4 text-slate-500 transition-transform ${styleOpen ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
@@ -178,7 +178,7 @@ export default function App() {
             </button>
             {styleOpen && style && (
               <div className="border-t border-edge px-5 py-4">
-                <Suspense fallback={<div className="py-8 text-center text-xs text-slate-500">Muat editor gayaâ€¦</div>}>
+                <Suspense fallback={<div className="py-8 text-center text-xs text-slate-500">Muat editor gaya…</div>}>
                   <StyleEditor value={style} onChange={setStyle} previewSide="right" />
                 </Suspense>
                 <div className="mt-5 flex flex-wrap items-center gap-3 border-t border-edge pt-4">
@@ -191,7 +191,7 @@ export default function App() {
                     <span>{styleSaved ? "Tersimpan" : "Simpan gaya default"}</span>
                   </button>
                   <p className="text-xs text-slate-500">
-                    Berlaku untuk semua episode baru. Episode yang sudah selesai tidak terpengaruh â€”
+                    Berlaku untuk semua episode baru. Episode yang sudah selesai tidak terpengaruh —
                     ubah gayanya lewat halaman episode.
                   </p>
                 </div>

@@ -1,2 +1,0 @@
--- Initial schema
--- Applied by db/jobs.py on first run

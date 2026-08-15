@@ -1,8 +1,10 @@
 from pydantic import model_validator
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
     google_api_key: str
     analyze_model: str = "gemini-flash-latest"
     whisper_model: str = "large-v3-turbo"
@@ -27,6 +29,7 @@ class Settings(BaseSettings):
     reframe_zoom_idle: float = 1.05
     reframe_zoom_ease: float = 0.04
     reframe_zoom_deadband: float = 0.05
+    reframe_min_headroom_ratio: float = 0.12
     reframe_track_step: int = 3
     reframe_track_cache: bool = True
     reframe_track_imgsz: int = 320
@@ -39,5 +42,3 @@ class Settings(BaseSettings):
             raise ValueError("CHUNK_OVERLAP_MIN harus lebih kecil dari CHUNK_DURATION_MIN")
         return self
 
-    class Config:
-        env_file = ".env"

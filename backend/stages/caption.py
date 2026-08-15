@@ -270,7 +270,6 @@ class CaptionStage(Stage):
             return StageResult(status=StageStatus.DONE, metadata={"clips_captioned": 0})
 
         # Gaya subtitle: global default + override per job (kalau ada)
-        from utils.caption_style import style_for_job
         style_cfg = style_for_job(db.get_job_style(job_id))
         ass_style = style_cfg.get("style", "highlight")
 
@@ -352,11 +351,13 @@ class CaptionStage(Stage):
         # Kill-aware: stop_requested dicek sebelum tiap burn + sisa futures
         # dibatalkan pas kill, biar "Hentikan" berhenti beneran (bukan hanya
         # mematikan ffmpeg yang lagi jalan, sisanya tetap encode berjam-jam).
+        killed = False
         workers = max(1, min(3, (os.cpu_count() or 2) // 2))
         with ThreadPoolExecutor(max_workers=workers) as pool:
             futures = [pool.submit(_burn, row) for row in rows]
             for fut in as_completed(futures):
                 if runtime.stop_requested(job_id):
+                    killed = True
                     for f in futures:
                         f.cancel()
                     break
@@ -370,6 +371,13 @@ class CaptionStage(Stage):
                 with done_lock:
                     done_rows += 1
                 print(f"    caption {done_rows}/{total_rows}")
+
+        if killed or runtime.stop_requested(job_id):
+            return StageResult(
+                status=StageStatus.FAILED,
+                error="Killed",
+                metadata={"clips_captioned": clips_captioned, "errors": len(errors)},
+            )
 
         return StageResult(
             status=StageStatus.DONE,

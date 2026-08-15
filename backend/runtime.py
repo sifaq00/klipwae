@@ -4,6 +4,7 @@ import threading
 
 _lock = threading.Lock()
 _stops: dict[int, threading.Event] = {}   # thread ident → stop event
+_job_stops: dict[str, threading.Event] = {}  # job_id → stop event
 _pending: set[int] = set()                # ident di-kill sebelum reset
 _by_job: dict[str, list[subprocess.Popen]] = {}  # job_id → subprocess aktif
 _anon_procs: list[subprocess.Popen] = []  # proc tanpa konteks job (test/standalone)
@@ -21,9 +22,13 @@ def _current() -> int:
 
 def set_job(job_id: str):
     _job_ctx.set(job_id)
+    if job_id:
+        with _lock:
+            if job_id not in _job_stops:
+                _job_stops[job_id] = threading.Event()
 
 
-def reset():
+def reset(job_id: str | None = None):
     """Panggil di awal thread job — stop state FRESH per job.
     Kill yang sempat masuk sebelum reset (pending) langsung kena."""
     with _lock:
@@ -33,6 +38,9 @@ def reset():
             ev.set()
             _pending.discard(ident)
         _stops[ident] = ev
+        jid = job_id or _job_ctx.get()
+        if jid:
+            _job_stops[jid] = ev
 
 
 def set_proc(p: subprocess.Popen | None):
@@ -59,10 +67,15 @@ def clear_proc(p: subprocess.Popen | None):
             _anon_procs.remove(p)
 
 
-def stop_requested() -> bool:
+def stop_requested(job_id: str | None = None) -> bool:
     with _lock:
         if _shutdown.is_set():
             return True
+        jid = job_id or _job_ctx.get()
+        if jid:
+            jev = _job_stops.get(jid)
+            if jev is not None and jev.is_set():
+                return True
         ev = _stops.get(_current())
         return ev is not None and ev.is_set()
 
@@ -85,6 +98,9 @@ def kill_job(job_id: str, thread_ident: int):
             ev.set()
         else:
             _pending.add(thread_ident)
+        jev = _job_stops.get(job_id)
+        if jev is not None:
+            jev.set()
         procs = list(_by_job.get(job_id, []))
     _terminate(procs)
 
@@ -95,6 +111,8 @@ def kill_all():
         _shutdown.set()
         for ev in _stops.values():
             ev.set()
+        for jev in _job_stops.values():
+            jev.set()
         procs = [p for lst in _by_job.values() for p in lst] + list(_anon_procs)
     _terminate(procs)
 
@@ -108,3 +126,4 @@ def unregister(thread_ident: int):
 def clear_job(job_id: str):
     with _lock:
         _by_job.pop(job_id, None)
+        _job_stops.pop(job_id, None)

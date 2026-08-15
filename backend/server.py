@@ -470,7 +470,10 @@ async def delete_job(job_id: str):
         for t in (runner, reburn):
             if t and t.is_alive:
                 try:
-                    t.join(10)
+                    if hasattr(t, "thread") and t.thread:
+                        t.thread.join(10)
+                    elif hasattr(t, "join"):
+                        t.join(10)
                 except Exception:
                     pass
         removed += _delete_files()
@@ -894,8 +897,11 @@ async def reburn_captions(job_id: str):
             if not enabled:
                 _REBURN_STATUS[job_id] = "skipped"
                 return
-            _REBURN_STATUS[job_id] = "done"
             _do()
+            if runtime.stop_requested(job_id):
+                _REBURN_STATUS[job_id] = "killed"
+            else:
+                _REBURN_STATUS[job_id] = "done"
         finally:
             runtime.clear_job(job_id)
             # JANGAN pop di sini: delete_job butuh ref thread utk join/kill

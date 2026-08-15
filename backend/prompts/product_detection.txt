@@ -28,6 +28,22 @@ Aturan confidence:
 - 0.5-0.8: disebut dengan sedikit konteks
 - <0.5: JANGAN dimasukkan — sekadar disebut sekilas tanpa pembahasan berarti
 
+Kategori yang TARGET (health/fitness/beauty):
+- Suplemen & olah gizi: whey/protein, vitamin, mineral, creatine, pre-workout, skincare dari dalam
+- Alat fitness: massage gun, treadmill, dumbbell, matras, alat terapi
+- Kecantikan & perawatan kulit: serum, sunscreen, toner, moisturizer, LED mask, alat face roller
+- Kebersihan & bodycare: shampoo, sabun, deodoran, alat cukur
+
+Panduan istilah (sering generik di topik ini):
+- Istilah GENERIK ("serum", "whey", "sunscreen", "LED mask") BUKAN produk — kalau brand tidak
+  disebutkan, isi product_mentioned = null dan pertimbangkan confidence di bawah.
+- Ambil kalau spesifik: "Somethinc Sunscreen SPF 50", "Optimum Nutrition Gold Standard Whey",
+  "Theragun Mini", "Foreo LED Mask". Nama produk resmi yang bisa dicari orang.
+- Produk dengan manfaat nyata (kandungan aktif, cara pakai, hasil, harga, perbandingan) = kandidat
+  kuat; sekadar "aku pakai vitamin" tanpa detail = lemah.
+- BEDA SOAL: pembahasan mendalam tanpa brand (dosis, hasil, cara pakai) TETAP masuk — kejelasan
+  nama produk hanya menaikkan confidence, bukan syarat. Detail mengalahkan tanpa-brand.
+
 Kalau tidak ada segmen yang layak sama sekali, balas {"segments": []} — jangan
 memaksakan mengisi array supaya "ada hasil".
 
@@ -51,6 +67,33 @@ Output:
 "confidence": 0.85,
 "reason": "Kandungan aktif, masalah yang diatasi, dan hasil pemakaian
 dijelaskan cukup mendalam untuk berdiri sendiri sebagai klip."}]}
+
+--- Contoh positif: suplemen ---
+Input:
+[00:31:00] Buat yang susah bangun pagi buat gym, aku saranin whey yang
+gampang dicampur air aja. Sekarang pakai Optimum Nutrition Gold Standard,
+rasa vanilla, 24 gram protein per scoop. Lumayan bantu recovery, dan
+dicampur susu almond tiap habis latihan.
+
+Output:
+{"segments": [{"start": "00:31:00", "end": "00:31:30",
+"product_mentioned": "Optimum Nutrition Gold Standard Whey",
+"topic": "Rekomendasi whey protein untuk recovery setelah latihan",
+"confidence": 0.82,
+"reason": "Merek spesifik, dosis protein, dan cara pakai dijelaskan."}]}
+
+--- Contoh positif: alat fitness ---
+Input:
+[00:48:00] Kalau kaki sering pegel abis kerja, invest ke massage gun
+Theragun Mini aja. Ada 5 head yang bisa diganti, udah kubanting ke otot
+betis dua minggu, pegelnya ilang banget. Harganya sekitar 3 jutaan.
+
+Output:
+{"segments": [{"start": "00:48:00", "end": "00:48:30",
+"product_mentioned": "Theragun Mini",
+"topic": "Pengalaman pakai massage gun untuk pegal kaki",
+"confidence": 0.8,
+"reason": "Merek spesifik, manfaat, aksesori, dan harga disebut."}]}
 
 --- Contoh negatif 1: disebut sekilas ---
 Input:

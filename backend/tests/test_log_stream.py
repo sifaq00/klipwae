@@ -114,6 +114,22 @@ def test_two_jobs_stdout_does_not_cross():
     assert "console line" in fallback.getvalue()
 
 
+def test_install_stdout_proxy_no_crash():
+    """Bug: _install_stdout_proxy refer _STDOUT_PROXY yang belum
+    didefinisikan → NameError → runner thread mati → job tak pernah
+    masuk DB (Studio kosong padahal POST sukses)."""
+    out_before = sys.stdout
+    try:
+        server._install_stdout_proxy()
+        assert sys.stdout is not out_before
+        proxy = sys.stdout
+        server._install_stdout_proxy()  # idempotent
+        assert sys.stdout is proxy
+    finally:
+        sys.stdout = out_before
+        server._STDOUT_PROXY = None
+
+
 def test_main_thread_stdout_falls_back():
     from io import StringIO
 

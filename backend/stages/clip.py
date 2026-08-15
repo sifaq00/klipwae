@@ -3,6 +3,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import structlog
+import runtime as runtime
 from stages.base import Stage, StageResult, StageStatus
 from stages.registry import register
 from utils.ffmpeg_helpers import run_ffmpeg, video_encode_args
@@ -187,6 +188,8 @@ class ClipStage(Stage):
 
         # ffmpeg per klip independen → jalan paralel (bukan guillotine 1-by-1)
         def _do(item):
+            if runtime.stop_requested(job_id):
+                return None
             seg, clip_idx, s, e, clip_path, buf = item
             self._clip_one(raw_video, s, e, clip_path, buf)
             return seg, clip_idx, s, e, clip_path
@@ -196,8 +199,15 @@ class ClipStage(Stage):
         with ThreadPoolExecutor(max_workers=getattr(config, "clip_parallel", 3)) as pool:
             futs = {pool.submit(_do, w): w for w in work}
             for fut in as_completed(futs):
+                if runtime.stop_requested(job_id):
+                    for f in futs:
+                        f.cancel()
+                    break
                 try:
-                    seg, clip_idx, s, e, clip_path = fut.result()
+                    res = fut.result()
+                    if res is None:
+                        continue
+                    seg, clip_idx, s, e, clip_path = res
                     db.upsert_clip_segment(
                         job_id, clip_idx,
                         sec_to_hms(s), sec_to_hms(e), seg,
@@ -254,7 +264,7 @@ class ClipStage(Stage):
             str(output),
         ], timeout=120)
         if result.returncode != 0:
-            raise RuntimeError(f"ffmpeg failed: {result.stderr[-500:]}")
+            raise RuntimeError(f"ffmpeg failed: {result.stderr[-500:].decode('utf-8', errors='replace')}")
 
 
 def _load_words(job_id: str) -> list[dict]:

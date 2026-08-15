@@ -89,16 +89,6 @@ def kill_job(job_id: str, thread_ident: int):
     _terminate(procs)
 
 
-def kill(thread_ident: int):
-    """Compat: stop per thread tanpa terminate proc (caller lama)."""
-    with _lock:
-        ev = _stops.get(thread_ident)
-        if ev is not None:
-            ev.set()
-        else:
-            _pending.add(thread_ident)
-
-
 def kill_all():
     """Shutdown server: stop semua job + terminate semua subprocess."""
     with _lock:

@@ -103,7 +103,7 @@ def test_transcribe_killed_does_not_write_partial():
             ]
 
             runtime.reset()
-            runtime.kill(threading.get_ident())
+            runtime.kill_job("job", threading.get_ident())
 
             from stages.transcribe import TranscribeStage
             config = SimpleNamespace(whisper_model="medium", whisper_device="cpu")

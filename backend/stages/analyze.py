@@ -261,16 +261,24 @@ class AnalyzeStage(Stage):
         # Retry total per chunk tetap 3x (tenacity), hanya wall-clock yang turun.
         import runtime
         from concurrent.futures import ThreadPoolExecutor, as_completed
-        with ThreadPoolExecutor(max_workers=getattr(config, "analyze_parallel", 3)) as pool:
-            futs = {pool.submit(_analyze_one, c): c for c in chunks}
-            for i, fut in enumerate(as_completed(futs), 1):
-                if runtime.stop_requested():
-                    break  # killed: jangan menunggu chunk tersisa (hemat biaya API)
-                print(f"    analyze {i}/{total_chunks} chunks")
-                segments, usage = fut.result()
-                all_segments.extend(segments)
-                total_cost += calc_cost(usage, config.analyze_model)
-                chunks_processed += 1
+        pool = ThreadPoolExecutor(max_workers=getattr(config, "analyze_parallel", 3))
+        futs = {pool.submit(_analyze_one, c): c for c in chunks}
+        killed = False
+        for i, fut in enumerate(as_completed(futs), 1):
+            if runtime.stop_requested():
+                killed = True
+                break  # killed: jangan menunggu chunk tersisa (hemat biaya API)
+            print(f"    analyze {i}/{total_chunks} chunks")
+            segments, usage = fut.result()
+            all_segments.extend(segments)
+            total_cost += calc_cost(usage, config.analyze_model)
+            chunks_processed += 1
+        if killed:
+            for f in futs:
+                f.cancel()
+            pool.shutdown(wait=False, cancel_futures=True)
+        else:
+            pool.shutdown(wait=True)
 
         merged = merge_and_dedupe(all_segments)
         final = [s for s in merged if s.confidence >= config.confidence_threshold]

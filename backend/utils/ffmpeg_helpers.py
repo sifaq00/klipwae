@@ -18,7 +18,8 @@ def run_ffmpeg(args: list[str], timeout: int = 300, cwd: str | None = None) -> s
     except subprocess.TimeoutExpired:
         proc.kill()
         _, err = proc.communicate()
-        raise RuntimeError(f"ffmpeg timeout ({timeout}s)") from None
+        detail = err[-500:].decode("utf-8", errors="replace") if err else ""
+        raise RuntimeError(f"ffmpeg timeout ({timeout}s): {detail}") from None
     finally:
         runtime.clear_proc(proc)
     return subprocess.CompletedProcess(args, proc.returncode, stdout=b"", stderr=err)

@@ -32,7 +32,7 @@ def test_kill_only_targets_its_job():
     t = threading.Thread(target=job_b)
     t.start()
     time.sleep(0.15)  # biar reset() B keproses
-    runtime.kill(my_ident)
+    runtime.kill_job("", my_ident)
     assert runtime.stop_requested(), "Job A harus berhenti"
     t.join(3)
     assert b_saw_stop == [], "Job B tidak boleh ikut berhenti"
@@ -42,7 +42,7 @@ def test_kill_only_targets_its_job():
 def test_kill_before_reset_applies_after_reset():
     """Kill sebelum thread job sempat reset → event pending, kena setelah reset."""
     ident = threading.get_ident()
-    runtime.kill(ident)
+    runtime.kill_job("", ident)
     assert not runtime.stop_requested(), "Belum reset, belum kena"
     runtime.reset()
     assert runtime.stop_requested(), "Pending kill harus aktif setelah reset"

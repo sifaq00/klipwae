@@ -8,6 +8,17 @@ interface Props {
   onDelete: (job: Job) => void;
 }
 
+// status backend ("downloading") → key stage ("ingest"). Tanpa map ini
+// findIndex selalu -1 → bar 0% tak terlihat selama job jalan.
+const STATUS_TO_STAGE: Record<string, string> = {
+  downloading: "ingest",
+  transcribing: "transcribe",
+  analyzing: "analyze",
+  clipping: "clip",
+  reframing: "reframe",
+  captioning: "caption",
+};
+
 export function JobsView({ jobs, activeJob, onOpen, onDelete }: Props) {
   const running = jobs.filter((j) => j.running).length;
   const done = jobs.filter((j) => j.status === "done").length;
@@ -64,7 +75,7 @@ export function JobsView({ jobs, activeJob, onOpen, onDelete }: Props) {
 
 function JobCard({ job, index, active, onOpen, onDelete }: { job: Job; index: number; active: boolean; onOpen: () => void; onDelete: () => void }) {
   const meta = statusMeta(job.status);
-  const stageIdx = STAGES.findIndex((s) => s.key === job.status);
+  const stageIdx = STAGES.findIndex((s) => s.key === (STATUS_TO_STAGE[job.status] ?? job.status));
   const progress = stageIdx >= 0 ? ((stageIdx + 1) / STAGES.length) * 100 : job.status === "done" ? 100 : 0;
 
   return (

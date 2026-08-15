@@ -1,10 +1,11 @@
 ﻿import json
 import os
 import threading
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 import structlog
+import runtime as runtime
 from stages.base import Stage, StageResult, StageStatus
 from stages.registry import register
 from utils.ffmpeg_helpers import run_ffmpeg, video_encode_args
@@ -280,12 +281,17 @@ class CaptionStage(Stage):
         done_lock = threading.Lock()
 
         def _burn(row):
+            if runtime.stop_requested(job_id):
+                return 0, row["id"], None, {"killed": True}
             clip = Path(row["clip_path"])
             # Prefer reframed (vertikal 9:16) â€” fallback ke raw kalau reframe skip
             reframed = clip.with_name(clip.stem + "_reframed.mp4")
             source = reframed if reframed.exists() else clip
             final_path = final_dir / source.name.replace("_reframed", "")
-            if final_path.exists():
+            ass_path = final_dir / final_path.with_suffix(".ass").name
+            # Skip hanya kalau final DAN .ass-nya ada — kalau nggak, caption_url
+            # mengarah ke 404 dan reprocess tak pernah memperbaikinya (dianggap complete).
+            if final_path.exists() and ass_path.exists():
                 return 1, row["id"], str(final_path), None
             try:
                 # Ambil kata yang overlap dengan segmen ini (pakai buffer clip)
@@ -305,7 +311,6 @@ class CaptionStage(Stage):
 
                 # Generate .ass
                 ass_content = generate_ass(clip_words, style=ass_style, style_cfg=style_cfg)
-                ass_path = final_dir / Path(final_path).with_suffix(".ass").name
                 ass_path.write_text(ass_content, encoding="utf-8")
 
                 # Burn-in subtitle ke video final
@@ -324,7 +329,7 @@ class CaptionStage(Stage):
                     str(final_path.relative_to(backend_dir).as_posix()),
                 ], timeout=600, cwd=str(backend_dir))
                 if result.returncode != 0:
-                    raise RuntimeError(f"ffmpeg burn-in failed: {result.stderr[-500:]}")
+                    raise RuntimeError(f"ffmpeg burn-in failed: {result.stderr[-500:].decode('utf-8', errors='replace')}")
 
                 _make_thumb(final_path)
                 return 1, row["id"], str(final_path), None
@@ -333,10 +338,19 @@ class CaptionStage(Stage):
                 return 0, row["id"], None, {"clip": clip.name, "error": str(e)}
 
         # Burn paralel â€” re-encode 1080x1920 itu CPU-bound, 3 worker berasa
-        # 2-3x lebih cepat daripada serial (re-burn 10 klip: ~10mnt â†’ ~4mnt).
+        # 2-3x lebih cepat daripada serial (re-burn 10 klip: ~10mnt â†' ~4mnt).
+        # Kill-aware: stop_requested dicek sebelum tiap burn + sisa futures
+        # dibatalkan pas kill, biar "Hentikan" berhenti beneran (bukan hanya
+        # mematikan ffmpeg yang lagi jalan, sisanya tetap encode berjam-jam).
         workers = max(1, min(3, (os.cpu_count() or 2) // 2))
         with ThreadPoolExecutor(max_workers=workers) as pool:
-            for ok, seg_id, caption_path, err in pool.map(_burn, rows):
+            futures = [pool.submit(_burn, row) for row in rows]
+            for fut in as_completed(futures):
+                if runtime.stop_requested(job_id):
+                    for f in futures:
+                        f.cancel()
+                    break
+                ok, seg_id, caption_path, err = fut.result()
                 if ok and caption_path:
                     db.update_segment_by_id(seg_id, caption_path=caption_path)
                     clips_captioned += 1

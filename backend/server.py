@@ -1,4 +1,4 @@
-import asyncio
+﻿import asyncio
 import io
 import logging
 import logging.handlers
@@ -56,7 +56,7 @@ def _setup() -> Settings:
     )
 
     root = logging.getLogger()
-    # _setup dipanggil per request (create_job/retry) — jangan nambah handler
+    # _setup dipanggil per request (create_job/retry) â€” jangan nambah handler
     # baru tiap kali, nanti baris log ke-duplikat & handler bocor.
     if not any(isinstance(h, logging.handlers.RotatingFileHandler) for h in root.handlers):
         root.addHandler(file_handler)
@@ -69,7 +69,7 @@ JOB_RUNNERS: dict[str, "JobRunner"] = {}
 
 def _cleanup_stale_files():
     """Retention: buang artefak yang lewat STORAGE_RETENTION_DAYS.
-    Raw video sekarang DISIMPAN (reprocess gak download ulang) — tapi tidak
+    Raw video sekarang DISIMPAN (reprocess gak download ulang) â€” tapi tidak
     boleh menumpuk selamanya: hapus yang mtime-nya lebih tua dari retention."""
     import time as _t
     try:
@@ -90,10 +90,11 @@ def _cleanup_stale_files():
         pass
 _REBURN: dict[str, threading.Thread] = {}
 _REBURN_STATUS: dict[str, str] = {}
-# Counter log ABSOLUT per job — PERSISTEN antar retry/runner. Runner baru
+# Counter log ABSOLUT per job â€” PERSISTEN antar retry/runner. Runner baru
 # me-reset buffer, tapi klien SSE pakai sejak absolut: tanpa ini, retry
 # langsung bikin SSE klien beku (sejak nembus buffer baru yang kosong).
 _JOB_LOG_SEQ: dict[str, int] = {}
+_JOB_LOG_LOCK = threading.Lock()  # seq bump + append harus atomik antar worker thread
 
 JOB_LOG_DIR = Path(__file__).parent / "data" / "job_logs"
 
@@ -103,7 +104,7 @@ def _job_log_path(job_id: str) -> Path:
 
 
 class _LogStream(io.TextIOBase):
-    """Stream per thread job — progress whisper/yt-dlp/stages masuk ke
+    """Stream per thread job â€” progress whisper/yt-dlp/stages masuk ke
     SSE + file log job-nya (bukan hilang di console)."""
 
     def __init__(self, log):
@@ -126,7 +127,7 @@ class _LogStream(io.TextIOBase):
 
 
 class _ThreadRoutedStdout(io.TextIOBase):
-    """sys.stdout global — tapi route per-thread ke log job masing-masing.
+    """sys.stdout global â€” tapi route per-thread ke log job masing-masing.
     Tanpa ini 2 job jalan bareng race: redirect_stdout menimpa sys.stdout
     global, print job A bocor ke buffer/SSE job B (progress bar saling
     tumpang tindih). Thread tanpa stream jatuh ke console."""
@@ -157,8 +158,11 @@ def _install_stdout_proxy():
         sys.stdout = _STDOUT_PROXY
 
 
+_STDOUT_PROXY = None
+
+
 class JobRunner:
-    _thread_streams: dict[int, _LogStream] = {}  # thread ident → stream job-nya
+    _thread_streams: dict[int, _LogStream] = {}  # thread ident â†’ stream job-nya
 
     def __init__(self, job_id: str, url: str):
         self.job_id = job_id
@@ -189,7 +193,7 @@ class JobRunner:
             db.close()
             runtime.clear_job(self.job_id)
             runtime.unregister(self.thread.ident)
-            # Runner selesai (done/failed/killed) — pop dari registry biar tidak
+            # Runner selesai (done/failed/killed) â€” pop dari registry biar tidak
             # menumpuk: log job tetap kebaca via file (stream_log fallback disk).
             if JOB_RUNNERS.get(self.job_id) is self:
                 JOB_RUNNERS.pop(self.job_id, None)
@@ -197,11 +201,14 @@ class JobRunner:
         self._log_event.set()
 
     def _log(self, msg: str):
-        seq = _JOB_LOG_SEQ.get(self.job_id, 0) + 1
-        _JOB_LOG_SEQ[self.job_id] = seq
-        self.log_buffer.append((seq, msg))
+        # Lock: _log dipanggil dari banyak worker thread (clip/caption pool)
+        # bareng â†’ get+set seq tak atomik, dua baris bisa share seq/terbalik.
+        with _JOB_LOG_LOCK:
+            seq = _JOB_LOG_SEQ.get(self.job_id, 0) + 1
+            _JOB_LOG_SEQ[self.job_id] = seq
+            self.log_buffer.append((seq, msg))
         self._log_event.set()
-        # Persist per job — log tetap kebaca setelah server restart
+        # Persist per job â€” log tetap kebaca setelah server restart
         try:
             JOB_LOG_DIR.mkdir(parents=True, exist_ok=True)
             with open(_job_log_path(self.job_id), "a", encoding="utf-8") as f:
@@ -211,10 +218,10 @@ class JobRunner:
 
     def kill(self):
         # Stop thread job INI + terminate semua subprocess-nya (termasuk
-        # ffmpeg worker) — job lain yang berjalan bareng tidak tersentuh.
+        # ffmpeg worker) â€” job lain yang berjalan bareng tidak tersentuh.
         if self.thread is not None and self.thread.ident:
             runtime.kill_job(self.job_id, self.thread.ident)
-        # Jangan timpa status FINAL (done/failed) yang sudah ditulis pipeline —
+        # Jangan timpa status FINAL (done/failed) yang sudah ditulis pipeline â€”
         # kill setelah selesai = no-op status (window: pipeline belum set _done
         # tapi sudah nulis status final; kecil & percaya pada final).
         if not self._done.is_set():
@@ -235,8 +242,8 @@ class JobRunner:
     def recent_logs(self, since: int = 0) -> list[str]:
         """Baris sejak index ABSOLUT `since` (exclusive). Buffer cuma 500
         terakhir, index persisten per job lintas retry/runner. Klien yang
-        ketinggalan jauh (since di bawah window) di-replay seluruh buffer —
-        dulu slice kosong → SSE beku diam-diam."""
+        ketinggalan jauh (since di bawah window) di-replay seluruh buffer â€”
+        dulu slice kosong â†’ SSE beku diam-diam."""
         buf = list(self.log_buffer)
         if not buf:
             return []
@@ -245,7 +252,7 @@ class JobRunner:
         return [m for s, m in buf if s > since]
 
 
-# ─── Lifespan ────────────────────────────────────────────────────────────────
+# â”€â”€â”€ Lifespan â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 
 @asynccontextmanager
@@ -258,7 +265,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Auto-Clipper API", lifespan=lifespan)
-# Self-use tool: hanya izinkan origin frontend dev. Jangan "*" — API ini
+# Self-use tool: hanya izinkan origin frontend dev. Jangan "*" â€” API ini
 # bisa menjalankan job berat & menulis .env.
 app.add_middleware(
     CORSMiddleware,
@@ -270,7 +277,7 @@ app.add_middleware(
 
 @app.middleware("http")
 async def no_store(request, call_next):
-    """API selalu fresh — tanpa ini Chrome heuristik-cache GET segments,
+    """API selalu fresh â€” tanpa ini Chrome heuristik-cache GET segments,
     polling progress re-burn nemu data basi (0/10 terus sampai cache expire)."""
     response = await call_next(request)
     if request.url.path.startswith("/api/"):
@@ -279,7 +286,7 @@ async def no_store(request, call_next):
 app.mount("/clips", StaticFiles(directory=str(DATA_DIR)), name="clips")
 
 
-# ─── Models ──────────────────────────────────────────────────────────────────
+# â”€â”€â”€ Models â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 
 class CreateJobRequest(BaseModel):
@@ -292,7 +299,7 @@ class SettingsUpdate(BaseModel):
     google_api_key: str | None = None
 
 
-# ─── Endpoints ───────────────────────────────────────────────────────────────
+# â”€â”€â”€ Endpoints â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 
 @app.get("/api/health")
@@ -398,25 +405,39 @@ async def delete_job(job_id: str):
     finally:
         db.close()
 
-    # Hapus file: raw, transcript, segments, clips (raw+reframed), final, thumb, ass, log
-    removed = 0
-    patterns = [
-        DATA_DIR / "raw" / f"{job_id}.*",
-        DATA_DIR / "transcripts" / f"{job_id}.*",
-        DATA_DIR / "segments" / f"{job_id}.*",
-        DATA_DIR / "clips_raw" / f"{job_id}_*",
-        DATA_DIR / "clips_final" / f"{job_id}_*",
-        DATA_DIR / "tracks" / f"{job_id}_*",
-        JOB_LOG_DIR / f"{job_id}.log",
-    ]
-    for pattern in patterns:
-        for p in pattern.parent.glob(pattern.name) if "*" in pattern.name else [pattern]:
-            try:
-                if p.exists() and p.name != "_style_preview.png":
-                    p.unlink()
-                    removed += 1
-            except OSError:
-                pass
+    # Hapus file: raw, transcript, segments, clips (raw+reframed), final, thumb, ass, log.
+    # Pass kedua: kalau thread masih hidup setelah join(10) (mis. whisper), dia bisa
+    # menulis ulang file yang baru dihapus â€” tunggu dia mati lalu hapus lagi.
+    def _delete_files() -> int:
+        removed = 0
+        patterns = [
+            DATA_DIR / "raw" / f"{job_id}.*",
+            DATA_DIR / "transcripts" / f"{job_id}.*",
+            DATA_DIR / "segments" / f"{job_id}.*",
+            DATA_DIR / "clips_raw" / f"{job_id}_*",
+            DATA_DIR / "clips_final" / f"{job_id}_*",
+            DATA_DIR / "tracks" / f"{job_id}_*",
+            JOB_LOG_DIR / f"{job_id}.log",
+        ]
+        for pattern in patterns:
+            for p in pattern.parent.glob(pattern.name) if "*" in pattern.name else [pattern]:
+                try:
+                    if p.exists() and p.name != "_style_preview.png":
+                        p.unlink()
+                        removed += 1
+                except OSError:
+                    pass
+        return removed
+
+    removed = _delete_files()
+    if (runner and runner.is_alive) or (reburn and reburn.is_alive):
+        for t in (runner, reburn):
+            if t and t.is_alive:
+                try:
+                    t.join(10)
+                except Exception:
+                    pass
+        removed += _delete_files()
     JOB_RUNNERS.pop(job_id, None)
     return {"status": "deleted", "files_removed": removed}
 
@@ -510,7 +531,7 @@ async def get_segments(job_id: str):
 
 
 def _resolve_clip_path(clip_path: str) -> Path:
-    """clip_path di DB relatif terhadap backend dir — normalisasi ke absolut
+    """clip_path di DB relatif terhadap backend dir â€” normalisasi ke absolut
     supaya cek file & relative_to(DATA_DIR) konsisten."""
     clip = Path(clip_path)
     if not clip.is_absolute():
@@ -552,7 +573,7 @@ async def reject_segment(segment_id: int):
     """Buang klip: hapus row segmen + semua file terkait (raw, reframed, final, .ass)."""
     db = JobDB()
     try:
-        # Cek aktivitas DULU — kalau job masih proses, jangan hapus apa pun
+        # Cek aktivitas DULU â€” kalau job masih proses, jangan hapus apa pun
         found = db.conn.execute(
             "SELECT job_id FROM segments WHERE id=?", (segment_id,)
         ).fetchone()
@@ -562,7 +583,7 @@ async def reject_segment(segment_id: int):
         runner = JOB_RUNNERS.get(jid)
         reburn = _REBURN.get(jid)
         if (runner and runner.is_alive) or (reburn and reburn.is_alive):
-            raise HTTPException(409, "Job masih memproses — tunggu selesai dulu")
+            raise HTTPException(409, "Job masih memproses â€” tunggu selesai dulu")
         row = db.delete_segment(segment_id)
     finally:
         db.close()
@@ -587,7 +608,7 @@ def _segment_files(seg: dict) -> list[Path]:
         final = Path(__file__).parent / "data" / "clips_final" / clip.name
         files.append(final)
         files.append(Path(__file__).parent / "data" / "clips_final" / Path(clip.name).with_suffix(".ass"))
-        files.append(final.with_suffix(".jpg"))  # thumbnail dari _make_thumb — kalau tidak, yatim
+        files.append(final.with_suffix(".jpg"))  # thumbnail dari _make_thumb â€” kalau tidak, yatim
     return files
 
 
@@ -645,7 +666,7 @@ def _set_env(path: Path, key: str, value: str):
     path.write_text("\n".join(lines) + "\n")
 
 
-# ─── Subtitle style ────────────────────────────────────────────────
+# â”€â”€â”€ Subtitle style â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 
 FONT_DIRS = [
@@ -657,7 +678,7 @@ _fonts_cache: list[str] | None = None
 
 
 def _font_families() -> list[str]:
-    """Scan font terinstall + bundle → daftar nama family.
+    """Scan font terinstall + bundle â†’ daftar nama family.
 
     Bundle project: nameID1 sudah dinormalisasi (mis. "Poppins ExtraBold").
     Sistem: nameID 16 dulu (variable font kadang nameID1 = "Montserrat Thin").
@@ -695,8 +716,8 @@ async def list_fonts():
 
 @app.post("/api/caption-style/preview")
 async def caption_style_preview(body: dict):
-    """Render preview REAL via libass — engine yang sama dengan burn-in.
-    Gambar contoh 1080x1920 dengan gaya yang diminta → URL gambar."""
+    """Render preview REAL via libass â€” engine yang sama dengan burn-in.
+    Gambar contoh 1080x1920 dengan gaya yang diminta â†’ URL gambar."""
     import time as _time
     from stages.caption import generate_ass
     from utils.caption_style import DEFAULT_STYLE
@@ -725,14 +746,20 @@ async def caption_style_preview(body: dict):
     # Path relatif + cwd: hindari escape colon drive (D\:) yang rusak di
     # filter subtitles saat input lavfi. Path absolut + escape tetap jalan
     # di burn-in (input video), tapi tidak di sini.
-    result = run_ffmpeg([
-        "-f", "lavfi", "-i", "color=c=0x0d0d18:s=1080x1920:r=30:d=4",
-        "-vf", f"subtitles={ass_path.relative_to(DATA_DIR.parent).as_posix()}:fontsdir=fonts",
-        "-frames:v", "1",
-        str((out_dir / "_style_preview.png").relative_to(DATA_DIR.parent).as_posix()),
-    ], timeout=60, cwd=str(DATA_DIR.parent))
-    if result.returncode != 0:
-        raise HTTPException(500, f"Preview render failed: {result.stderr[-300:]}")
+    # run_in_executor: ffmpeg sync (up to 60s) di thread pool — kalau
+    # dieksekusi inline, SEMUA SSE stream (log job, progress) ikut beku.
+    def _render() -> int:
+        return run_ffmpeg([
+            "-f", "lavfi", "-i", "color=c=0x0d0d18:s=1080x1920:r=30:d=4",
+            "-vf", f"subtitles={ass_path.relative_to(DATA_DIR.parent).as_posix()}:fontsdir=fonts",
+            "-frames:v", "1",
+            str((out_dir / "_style_preview.png").relative_to(DATA_DIR.parent).as_posix()),
+        ], timeout=60, cwd=str(DATA_DIR.parent)).returncode
+
+    loop = asyncio.get_running_loop()
+    returncode = await loop.run_in_executor(None, _render)
+    if returncode != 0:
+        raise HTTPException(500, "Preview render failed")
     return {"url": f"/clips/clips_final/_style_preview.png?v={int(_time.time() * 1000)}"}
 
 
@@ -807,8 +834,12 @@ async def reburn_captions(job_id: str):
             db.close()
 
     def _wrapped():
-        runtime.set_job(job_id)  # ffmpeg worker ter-ikat ke job → ikut ke-kill
+        runtime.set_job(job_id)  # ffmpeg worker ter-ikat ke job â†’ ikut ke-kill
+        runtime.reset()
         try:
+            if runtime.stop_requested(job_id):
+                _REBURN_STATUS[job_id] = "killed"
+                return
             jdb = JobDB()
             try:
                 from utils.caption_style import style_for_job

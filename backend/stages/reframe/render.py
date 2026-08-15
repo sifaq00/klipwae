@@ -36,7 +36,7 @@ def render_center_crop(
         str(output_path),
     ], timeout=180)
     if result.returncode != 0:
-        raise RuntimeError(f"ffmpeg center-crop failed: {result.stderr[-500:]}")
+        raise RuntimeError(f"ffmpeg center-crop failed: {result.stderr[-500:].decode('utf-8', errors='replace')}")
 
 
 def render_split_screen(
@@ -86,7 +86,7 @@ def render_split_screen(
             str(output_path),
         ], timeout=300)
         if result.returncode != 0:
-            raise RuntimeError(f"ffmpeg concat failed: {result.stderr[-500:]}")
+            raise RuntimeError(f"ffmpeg concat failed: {result.stderr[-500:].decode('utf-8', errors='replace')}")
 
 
 def _get_video_info(input_path: Path) -> tuple[float, float]:
@@ -142,4 +142,4 @@ def _crop_segment(
         str(output_path),
     ], timeout=180)
     if result.returncode != 0:
-        raise RuntimeError(f"ffmpeg crop segment failed: {result.stderr[-500:]}")
+        raise RuntimeError(f"ffmpeg crop segment failed: {result.stderr[-500:].decode('utf-8', errors='replace')}")

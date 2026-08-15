@@ -94,7 +94,7 @@ export default function App() {
       <header className="mb-8 flex items-center justify-between">
         <div className="flex items-center gap-3.5">
           <div className="group relative flex shrink-0 items-center justify-center transition-transform duration-200 hover:scale-105">
-            <img src="/logo.png" alt="Klipwae Studio Logo" className="h-10 w-10 sm:h-11 sm:w-11 object-contain drop-shadow-[0_0_14px_rgba(0,242,254,0.45)]" />
+            <img src="/logo.png" alt="Klipwae Studio Logo" className="h-9 w-9 sm:h-10 sm:w-10 object-contain drop-shadow-[0_0_12px_rgba(0,242,254,0.4)]" />
           </div>
           <div>
             <h1 className="font-display text-xl font-bold tracking-tight">

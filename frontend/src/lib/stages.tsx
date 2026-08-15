@@ -170,3 +170,13 @@ export function renderPresetIcon(presetId: string, className: string = "h-3.5 w-
       );
   }
 }
+
+export function getSegmentCopyText(seg: { affiliate_caption?: string; hashtags?: string[]; caption_text?: string }): string {
+  if (seg.affiliate_caption) {
+    return seg.hashtags && seg.hashtags.length > 0
+      ? `${seg.affiliate_caption}\n\n${seg.hashtags.join(" ")}`
+      : seg.affiliate_caption;
+  }
+  return seg.caption_text || "";
+}
+

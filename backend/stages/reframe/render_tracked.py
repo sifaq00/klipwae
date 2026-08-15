@@ -15,6 +15,15 @@ from utils.ffmpeg_helpers import run_ffmpeg, video_encode_args
 CONF_MIN = 0.35        # box di bawah confidence ini diabaikan
 
 
+def _follow_target(cur: float, target: float, snap: bool, alpha: float = 0.25) -> float:
+    """EMA target. Saat snap=True (boost switch aktif): langsung ke target —
+    EMA target (0.25) jadi bottleneck kalau tak di-snap: kamera ngejar target
+    yang melayang pelan, settle tetap ~1.3s walau camera alpha 0.5."""
+    if snap:
+        return target
+    return cur + (target - cur) * alpha
+
+
 def _switch_alpha(prev_side, cur_side, boost_left, base, boost, boost_frames):
     """Alpha untuk frame ini. Saat side BERUBAH → boost (snap cepat, penonton
     langsung lihat speaker baru — glide EMA 0.5-1s terasa "kejar-kejaran" di
@@ -157,17 +166,21 @@ def render_tracked(
             if box:
                 # Harden-on-switch: deteksi side berubah → boost alpha
                 alpha = smooth_alpha
+                snap_target = False
                 if has_path and seg is not None:
                     alpha, switch_boost_left = _switch_alpha(
                         prev_side, seg, switch_boost_left,
                         base=smooth_alpha, boost=0.5, boost_frames=SWITCH_BOOST_FRAMES,
                     )
+                    snap_target = alpha != smooth_alpha
                 prev_side = seg if has_path else None
                 bx = (box[1] + box[3]) / 2
                 by = box[2] + (box[4] - box[2]) * head_bias
                 # EMA kedua: target box sendiri dihaluskan dulu (buang jitter deteksi)
-                t_cx += (bx - t_cx) * target_alpha
-                t_cy += (by - t_cy) * target_alpha
+                # Saat switch: SNAP target — kalau tidak, EMA 0.25 jadi bottleneck
+                # (kamera ngejar target yang melayang → settle masih ~1.3s).
+                t_cx = _follow_target(t_cx, bx, snap=snap_target, alpha=target_alpha)
+                t_cy = _follow_target(t_cy, by, snap=snap_target, alpha=target_alpha)
                 # soft deadzone: kamera gerak mulus tanpa hentakan stop-and-go
                 dx = t_cx - cx
                 dy = t_cy - cy

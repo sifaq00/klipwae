@@ -6,7 +6,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from stages.reframe.render_tracked import _switch_alpha
+from stages.reframe.render_tracked import _switch_alpha, _follow_target
 
 
 def test_no_switch_uses_base_alpha():
@@ -40,9 +40,33 @@ def test_no_path_single_shot_never_boosts():
     assert alpha == 0.08 and boost == 0
 
 
+def test_follow_target_snaps_when_boosted():
+    """Bottleneck ke-2: target EMA (0.25) TIDAK di-boost → kamera ngejar
+    target yang melayang pelan (settle tetap ~1.3s walau camera alpha 0.5).
+    Saat boost aktif, target di-SNAP ke box — settle jadi 0.2s."""
+    # snap: langsung ke target
+    assert _follow_target(100.0, 900.0, snap=True) == 900.0
+    assert _follow_target(100.0, 100.0, snap=True) == 100.0
+    # normal EMA
+    t = _follow_target(100.0, 900.0, snap=False, alpha=0.25)
+    assert abs(t - 300.0) < 1e-6, f"EMA 0.25 harus 300, got {t}"
+
+
+def test_follow_target_ema_moves_toward_target():
+    cur, tgt = 0.0, 100.0
+    n = 0
+    while abs(tgt - cur) > 1.0 and n < 1000:
+        cur = _follow_target(cur, tgt, snap=False, alpha=0.25)
+        n += 1
+    assert n < 100, f"EMA tak konvergen: {n} iterasi"
+    assert abs(cur - tgt) < 1.0
+
+
 if __name__ == "__main__":
     test_no_switch_uses_base_alpha()
     test_switch_boosts_alpha()
     test_boost_ramps_down_to_base()
     test_no_path_single_shot_never_boosts()
+    test_follow_target_snaps_when_boosted()
+    test_follow_target_ema_moves_toward_target()
     print("all ok")

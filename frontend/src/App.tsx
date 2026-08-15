@@ -97,15 +97,15 @@ export default function App() {
             <img
               src="/logo.png"
               alt="Klipwae Studio Logo"
-              className="h-[34px] w-[34px] object-contain drop-shadow-[0_0_10px_rgba(0,242,254,0.35)]"
+              className="h-8 w-8 object-contain drop-shadow-[0_0_10px_rgba(0,242,254,0.35)]"
             />
           </div>
-          <div className="flex h-[34px] flex-col justify-between py-0.5">
-            <h1 className="font-display text-[18px] font-bold leading-none tracking-tight">
+          <div>
+            <h1 className="font-display text-[21px] sm:text-[22px] font-bold leading-tight tracking-tight">
               <span className="text-gradient">Klipwae</span>{" "}
               <span className="text-slate-300">Studio</span>
             </h1>
-            <p className="text-[10.5px] font-medium leading-none text-slate-400">
+            <p className="text-[11px] font-medium text-slate-400">
               Podcast → klip produk → siap keranjang kuning
             </p>
           </div>

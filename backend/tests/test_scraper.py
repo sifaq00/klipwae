@@ -98,10 +98,10 @@ def test_score_item_ranks_title_over_description():
 
 
 def test_expand_query_uses_gemini_and_falls_back():
-    # fallback: gemini gagal → query asli (harus selalu jalan)
+    # fallback: gemini gagal → frasa pendek ber-prefix podcast (kontekstual)
     with patch("utils.scraper._gemini_expand", side_effect=RuntimeError("no key")):
         qs = expand_query("podcast skincare sponsor")
-    assert qs == ["podcast skincare sponsor"], f"fallback: {qs}"
+    assert "podcast skincare sponsor" in qs, f"fallback: {qs}"
 
     # sukses: parse JSON array
     class FakeResp:
@@ -109,6 +109,36 @@ def test_expand_query_uses_gemini_and_falls_back():
     with patch("utils.scraper._gemini_expand", return_value=FakeResp()):
         qs = expand_query("cari podcast")
     assert qs == ["q1", "q2", "q3"]
+
+
+def test_fallback_queries_splits_long_query():
+    """Gemini mati + query kalimat panjang → yt-dlp 0 hasil. Fallback harus
+    pecah jadi frasa pendek yang bisa dicari, bukan query utuh."""
+    from utils.scraper import _fallback_queries
+    q = ("podcast indonesia seperti podcastnya radityadika, kasisolusi, pwk dll, "
+         "yang di dalamnya ada pembahasan produk kecantikan/kesehatan/kebugaran dan sejenisnya")
+    qs = _fallback_queries(q)
+    assert qs, "harus ada frasa"
+    assert all(len(fr) <= 60 for fr in qs), f"frasa kebanyakan panjang: {qs}"
+    # query utuh TIDAK boleh jadi fallback (pasti 0 hasil di yt-dlp)
+    assert q not in qs, qs
+    print("OK test_fallback_queries_splits_long_query")
+
+
+def test_scrape_multi_uses_fallback_when_gemini_down():
+    """Gemini down → fallback frasa pendek tetap kasih hasil."""
+    fake = type("R", (), {"returncode": 0, "stdout": "x|T|C|100|d\n", "stderr": ""})()
+
+    def fake_run(args, **kw):
+        q = args[-1]
+        assert "ytsearch" in q
+        return fake
+
+    with patch("utils.scraper.subprocess.run", fake_run), \
+         patch("utils.scraper._gemini_expand", side_effect=RuntimeError("down")):
+        items = scrape_multi("podcast indonesia bahas skincare sponsor, produk kecantikan", limit=3,
+                             min_duration=0, keywords=["skincare"])
+    assert len(items) >= 1, "fallback harus tetap kasih hasil"
 
 
 def test_scrape_multi_merges_dedupes_scores_and_caps():

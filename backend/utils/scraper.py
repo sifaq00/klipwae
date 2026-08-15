@@ -133,15 +133,55 @@ def _gemini_expand(query: str, count: int = 4):
     )
 
 
+_STOPWORDS = {
+    "seperti", "podcastnya", "podcast", "indonesia", "yang", "di", "dalam",
+    "dalamnya", "ada", "pembahasan", "dan", "serta", "nya", "dll", "dst",
+    "dsb", "buat", "untuk", "sama", "dengan", "misal", "contoh", "tolong",
+    "cari", "carikan", "mau", "pengen", "ingin", "sejenisnya", "juga",
+    "atau", "saya", "aku", "kamu", "gw", "gue", "bisa", "tidak", "bukan",
+}
+
+
+def _fallback_queries(query: str, count: int = 3) -> list[str]:
+    """Pecah query kalimat panjang jadi frasa pendek yang bisa dicari —
+    TANPA Gemini. Query utuh yang panjang > 60 char bikin yt-dlp 0 hasil.
+    Kalau query asli menyebut 'podcast', frasa di-prefix 'podcast' biar
+    search kontekstual (bukan 'kecantikan' generik)."""
+    want_podcast = "podcast" in query.lower()
+    parts = [p.strip() for p in re.split(r"[,;()/]+", query) if p.strip()]
+    frases = []
+    for p in parts:
+        words = [w for w in re.findall(r"[a-zA-Z0-9]+", p) if w.lower() not in _STOPWORDS]
+        if words:
+            frases.append(" ".join(words))
+    # ambil frasa dengan kata terbanyak dulu (paling spesifik)
+    frases.sort(key=lambda f: len(f.split()), reverse=True)
+    frases = [f for f in frases if len(f) <= 60][:count]
+    if want_podcast:
+        frases = [f"podcast {f}" if not f.lower().startswith("podcast") else f for f in frases]
+    if not frases:
+        words = [w for w in re.findall(r"[a-zA-Z0-9]+", query) if w.lower() not in _STOPWORDS]
+        frases = [" ".join(words[:6])] if words else [query[:60]]
+        if want_podcast and not frases[0].lower().startswith("podcast"):
+            frases[0] = f"podcast {frases[0]}"
+    return frases or [query[:60]]
+
+
 def expand_query(query: str, count: int = 4) -> list[str]:
-    """Query → variasi pencarian via Gemini. Gagal/offline → fallback [query]
-    (scraper tetap jalan tanpa Gemini)."""
-    try:
-        resp = _gemini_expand(query, count)
-        qs = [q.strip() for q in resp.parsed.queries if q and q.strip()]
-        return qs[:count] if qs else [query]
-    except Exception:
-        return [query]
+    """Query → variasi pencarian via Gemini (retry 2x + jeda — rawan
+    rate-limit kalau pipeline sedang jalan). Gagal → fallback frasa pendek
+    (bukan query utuh — yang panjang bikin yt-dlp 0 hasil)."""
+    import time
+    for attempt in range(3):
+        try:
+            resp = _gemini_expand(query, count)
+            qs = [q.strip() for q in resp.parsed.queries if q and q.strip()]
+            if qs:
+                return qs[:count]
+        except Exception:
+            pass
+        time.sleep(1.0 * (attempt + 1))
+    return _fallback_queries(query, count)
 
 
 def scrape_multi(query: str, limit: int = 50, min_duration: int = 0,
@@ -164,7 +204,7 @@ def scrape_multi(query: str, limit: int = 50, min_duration: int = 0,
 
     if keywords is None:
         words = re.findall(r"[a-zA-Z0-9]+", query.lower())
-        keywords = [w for w in words if len(w) > 3] or [query]
+        keywords = [w for w in words if len(w) > 3 and w not in _STOPWORDS] or [query]
 
     result = []
     for item in merged.values():

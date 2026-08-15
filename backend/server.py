@@ -426,24 +426,27 @@ async def get_job(job_id: str):
 @app.delete("/api/jobs/{job_id}")
 async def delete_job(job_id: str):
     """Hapus episode total: kill kalau jalan, DB rows, semua file terkait."""
+
+    async def _join_quiet(thread) -> None:
+        # asyncio.to_thread: thread.join sync TIDAK boleh nge-blok event loop
+        # (semua SSE stream & request ikut beku 10-20s).
+        try:
+            await asyncio.to_thread(thread.join, 10)
+        except Exception:
+            pass
+
     runner = JOB_RUNNERS.get(job_id)
     if runner and runner.is_alive:
         runner.kill()
-        try:
-            # Jangan langsung hapus file: thread yang masih jalan bisa nulis
-            # ulang file yang baru dihapus (zombie). Tunggu thread berhenti.
-            runner.thread.join(10)
-        except Exception:
-            pass
+        # Jangan langsung hapus file: thread yang masih jalan bisa nulis
+        # ulang file yang baru dihapus (zombie). Tunggu thread berhenti.
+        await _join_quiet(runner.thread)
 
     # Reburn masih jalan untuk job ini? terminate + tunggu berhenti dulu
     reburn = _REBURN.get(job_id)
     if reburn and reburn.is_alive:
         runtime.kill_job(job_id, reburn.ident)
-        try:
-            reburn.join(10)
-        except Exception:
-            pass
+        await _join_quiet(reburn)
     _REBURN.pop(job_id, None)
 
     db = JobDB()
@@ -484,13 +487,8 @@ async def delete_job(job_id: str):
     if (runner and runner.is_alive) or (reburn and reburn.is_alive):
         for t in (runner, reburn):
             if t and t.is_alive:
-                try:
-                    if hasattr(t, "thread") and t.thread:
-                        t.thread.join(10)
-                    elif hasattr(t, "join"):
-                        t.join(10)
-                except Exception:
-                    pass
+                thread = t.thread if hasattr(t, "thread") and t.thread else t
+                await _join_quiet(thread)
         removed += _delete_files()
     JOB_RUNNERS.pop(job_id, None)
     return {"status": "deleted", "files_removed": removed}
@@ -678,6 +676,9 @@ def _segment_files(seg: dict) -> list[Path]:
 
 
 def _toggle_segment(segment_id: int, field: str) -> dict:
+    _ALLOWED_TOGGLE = {"reviewed", "posted"}
+    if field not in _ALLOWED_TOGGLE:
+        raise HTTPException(400, f"Invalid toggle field: {field}")
     db = JobDB()
     try:
         row = db.conn.execute(
@@ -820,10 +821,15 @@ async def caption_style_preview(body: dict):
     # dieksekusi inline, SEMUA SSE stream (log job, progress) ikut beku.
     def _render() -> int:
         fonts_opt = ""
-        fonts_dir = DATA_DIR.parent / "assets" / "fonts"
-        if not (fonts_dir.exists() and any(fonts_dir.iterdir())):
-            fonts_dir = DATA_DIR.parent / "fonts"
-        if fonts_dir.exists() and any(fonts_dir.iterdir()):
+        # Pilih dir font TERBANYAK — assets/fonts cuma sisa Montserrat,
+        # pack OFL lengkap di backend/fonts (lihat caption.py).
+        candidates = [DATA_DIR.parent / "assets" / "fonts", DATA_DIR.parent / "fonts"]
+        fonts_dir = max(
+            (d for d in candidates if d.exists() and any(d.iterdir())),
+            key=lambda d: sum(1 for _ in d.glob("*.ttf")),
+            default=None,
+        )
+        if fonts_dir is not None:
             fonts_opt = f":fontsdir={fonts_dir.relative_to(DATA_DIR.parent).as_posix()}"
 
         return run_ffmpeg([

@@ -6,12 +6,12 @@ Hasil audit menyeluruh frontend + backend. Diurutkan berdasarkan **dampak nyata*
 
 ## 🔴 P0 — Bug Kritis (Harus Diperbaiki)
 
-| # | Masalah | Dampak | Lokasi |
-|---|---------|--------|--------|
-| 1 | **`delete_job` memblokir event loop** — `thread.join(10)` dipanggil sync di dalam `async def`, membekukan seluruh API + SSE selama 10–20 detik | Semua request & live log berhenti | [`server.py:435, 489`](file:///D:/Project/auto-clipper-app/backend/server.py#L435) |
-| 2 | **`render_tracked.py` hardcode `h264_nvenc`** — tidak pakai `video_encode_args()`, langsung crash di mesin tanpa GPU Nvidia | Reframe gagal total di CPU/macOS/AMD | [`render_tracked.py:89`](file:///D:/Project/auto-clipper-app/backend/stages/reframe/render_tracked.py#L89) |
-| 3 | **Dependency hilang di `pyproject.toml`** — `opencv-python`, `numpy`, `python-dotenv` dipakai tapi tidak di-declare | Fresh install dari pyproject gagal | [`pyproject.toml:6-23`](file:///D:/Project/auto-clipper-app/backend/pyproject.toml#L6) |
-| 4 | **SQL injection vector di `_toggle_segment`** — field name langsung di-interpolasi ke query tanpa whitelist | Potensi eksploitasi database | [`server.py:680`](file:///D:/Project/auto-clipper-app/backend/server.py#L680) |
+| # | Masalah | Dampak | Lokasi | Status |
+|---|---------|--------|--------|--------|
+| 1 | **`delete_job` memblokir event loop** — `thread.join(10)` dipanggil sync di dalam `async def`, membekukan seluruh API + SSE selama 10–20 detik | Semua request & live log berhenti | [`server.py`](file:///D:/Project/auto-clipper-app/backend/server.py#L435) | ✅ **FIXED** — `asyncio.to_thread(join, 10)` via `_join_quiet` (semua 3 call site) |
+| 2 | **`render_tracked.py` hardcode `h264_nvenc`** — tidak pakai `video_encode_args()`, langsung crash di mesin tanpa GPU Nvidia | Reframe gagal total di CPU/macOS/AMD | [`render_tracked.py:89`](file:///D:/Project/auto-clipper-app/backend/stages/reframe/render_tracked.py#L89) | ✅ **FIXED** — pakai `video_encode_args()` (fallback libx264 otomatis) |
+| 3 | **Dependency implisit di `pyproject.toml`** — `opencv-python`, `numpy`, `python-dotenv` dipakai langsung tapi tidak di-declare (datang transitif via mediapipe/ultralytics/pydantic-settings) | Install tetap jalan, tapi versi tak ter-pin → drift tak terkendali | [`pyproject.toml:6-23`](file:///D:/Project/auto-clipper-app/backend/pyproject.toml#L6) | ✅ **FIXED** — eksplisit `opencv-python-headless>=4.8`, `numpy>=1.24`, `python-dotenv>=1.0` |
+| 4 | **Interpolasi field tanpa whitelist di `_toggle_segment`** — `{field}` langsung ke query; saat ini aman (field hanya dari 2 caller internal hardcoded `"reviewed"`/`"posted"`), tapi rapuh kalau ada caller baru | Defense-in-depth, bukan hole eksploitable sekarang | [`server.py:680`](file:///D:/Project/auto-clipper-app/backend/server.py#L680) | ✅ **FIXED** — whitelist `{"reviewed", "posted"}` + HTTPException 400 |
 
 ---
 
@@ -24,8 +24,8 @@ Hasil audit menyeluruh frontend + backend. Diurutkan berdasarkan **dampak nyata*
 | 5 | **Whisper model di-load ulang tiap job** — `WhisperModel(...)` baca disk 5–15 detik setiap transcribe | Buang waktu 5–15 detik/job | [`transcribe.py:114`](file:///D:/Project/auto-clipper-app/backend/stages/transcribe.py#L114) |
 | 6 | **6–7 video decode pass di reframe** — detect_layout, face_regions, speaker_activity, tracker, render masing-masing buka video sendiri | CPU/GPU kerja 6× lipat per klip | [`reframe/__init__.py`](file:///D:/Project/auto-clipper-app/backend/stages/reframe/__init__.py) |
 | 7 | **Missing DB indexes** — `stage_runs`, `metrics`, `segments`, `jobs` tanpa index, full table scan | Query makin lambat seiring data tumbuh | [`schema.sql`](file:///D:/Project/auto-clipper-app/backend/db/schema.sql) |
-| 8 | **`_ensure_columns()` jalan tiap `JobDB()` dibuat** — DDL inspection di setiap API call | Overhead SQLite yang tidak perlu | [`jobs.py:64`](file:///D:/Project/auto-clipper-app/backend/db/jobs.py#L64) |
-| 9 | **Tracker load semua frame ke RAM** — 600 frame uncompressed (~1.6GB) dalam list Python | Risiko OOM / crash di video panjang | [`tracker.py:96`](file:///D:/Project/auto-clipper-app/backend/stages/reframe/tracker.py#L96) |
+| 8 | **`_ensure_columns()` jalan tiap `JobDB()` dibuat** — DDL inspection di setiap API call | Overhead mikro (PRAGMA µs-level) — paling terasa di burst request; pindah ke `init_db()` tetap lebih bersih | [`jobs.py:64`](file:///D:/Project/auto-clipper-app/backend/db/jobs.py#L64) |
+| 9 | **Tracker load frame ke RAM** — frame **sampled** (step=3, bukan semua) tetap bertumpuk di list Python: 200 frame 1080p ≈ 1.2GB | Risiko OOM di video panjang | [`tracker.py:96`](file:///D:/Project/auto-clipper-app/backend/stages/reframe/tracker.py#L96) |
 | 10 | **yt-dlp dipanggil 3× per job** — metadata awal, download, metadata ulang | Lambat + risiko rate-limit YouTube | [`ingest.py:90, 113`](file:///D:/Project/auto-clipper-app/backend/stages/ingest.py#L90) |
 
 ### Frontend
@@ -74,10 +74,10 @@ Hasil audit menyeluruh frontend + backend. Diurutkan berdasarkan **dampak nyata*
 ### Fase A — Critical Fixes (P0) ⏱️ ~30 menit
 > Fix bug kritis yang bisa bikin crash / security hole
 
-1. Fix `delete_job` → `asyncio.to_thread(thread.join, 10)`
-2. Fix `render_tracked.py` → pakai `video_encode_args()`
-3. Tambah missing deps di `pyproject.toml`
-4. Whitelist field di `_toggle_segment`
+1. ✅ **DONE** — Fix `delete_job` → `asyncio.to_thread(thread.join, 10)`
+2. ✅ **DONE** — Fix `render_tracked.py` → pakai `video_encode_args()`
+3. ✅ **DONE** — Tambah explicit deps di `pyproject.toml` (opencv-python-headless, numpy, python-dotenv)
+4. ✅ **DONE** — Whitelist field di `_toggle_segment` (`{"reviewed", "posted"}`)
 
 ### Fase B — Performance Wins (P1) ⏱️ ~1–2 jam
 > Optimasi yang langsung terasa dampaknya

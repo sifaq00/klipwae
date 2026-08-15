@@ -322,6 +322,31 @@ async def health():
     return {"status": "ok"}
 
 
+@app.get("/api/scrape")
+async def scrape_links(q: str = "", url: str = "", limit: int = 50, min_duration: int = 0):
+    """Scraper: natural-language search (q) atau channel/playlist (url) →
+    daftar video YouTube (metadata saja, cepat, tanpa download).
+
+    Mode q: Gemini expand query → multi-query → skor relevansi → urutkan
+    (Lapis 1+3). min_duration > 0: filter video pendek (podcast = panjang).
+    """
+    from utils.scraper import scrape_channel, scrape_multi
+    try:
+        if url:
+            if not is_valid_youtube_url(url):
+                raise HTTPException(400, "Invalid YouTube URL")
+            items = scrape_channel(url, limit=limit)
+        elif q.strip():
+            items = scrape_multi(q.strip(), limit=limit, min_duration=min_duration)
+        else:
+            raise HTTPException(400, "Param 'q' (search) atau 'url' (channel/playlist) wajib")
+    except HTTPException:
+        raise
+    except RuntimeError as e:
+        raise HTTPException(502, str(e)) from e
+    return {"items": items, "count": len(items)}
+
+
 @app.post("/api/jobs")
 async def create_job(body: JobCreate):
     if not is_valid_youtube_url(body.url):

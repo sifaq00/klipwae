@@ -161,8 +161,8 @@ def test_analyze_stage_with_mock(tmp_path: Path):
         from stages import analyze
         orig_analyze_chunk = analyze.analyze_chunk
         orig_generate_captions = analyze.generate_captions
-        analyze.analyze_chunk = lambda client, sp, ct, model: (fake_segments, {"input_tokens": 100, "output_tokens": 50})
-        analyze.generate_captions = lambda client, sp, segs, model: {0: "Hook! \n#skincare #fyp"}
+        analyze.analyze_chunk = lambda client, sp, ct, model, fallback_model=None: (fake_segments, {"input_tokens": 100, "output_tokens": 50})
+        analyze.generate_captions = lambda client, sp, segs, model, fallback_model=None: {0: "Hook! \n#skincare #fyp"}
 
         # Mock config
         from types import SimpleNamespace
@@ -369,8 +369,10 @@ def test_analyze_stage_chunk_failure_does_not_fail_job(tmp_path):
             db.close()
             runtime.unregister(threading.get_ident())
 
-        assert result.status.value == "done", f"status={result.status}"
-        assert result.metadata["segments_found"] == 0
+        # SEMUA chunk gagal → FAILED dengan pesan jelas (bukan done + notice
+        # '0 segmen' yang menyesatkan — kasus nyata: quota 429 habis).
+        assert result.status.value == "failed", f"status={result.status}"
+        assert "Gemini API gagal di semua chunk" in result.error, result.error
         out = Path("data/segments/job2.json")
         assert out.exists(), "Output file tetap harus ditulis"
         assert json.loads(out.read_text(encoding="utf-8")) == []

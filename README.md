@@ -268,7 +268,7 @@ list with comments).
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `GOOGLE_API_KEY` | — | **Required.** Gemini key for transcript analysis |
-| `ANALYZE_MODEL` | `gemini-flash-latest` | Gemini model for analysis |
+| `ANALYZE_MODEL` / `ANALYZE_MODEL_FALLBACK` | `gemini-flash-latest` / `gemini-3.6-flash` | Gemini model + auto-fallback saat kuota 429 (free-tier 20 req/hari per model) |
 | `WHISPER_MODEL` | `large-v3-turbo` | Whisper model (local dir `models/` wins if present) |
 | `WHISPER_DEVICE` | `cuda` | `cuda` or `cpu` |
 | `MAX_CONCURRENT_JOBS` | `2` | Parallel jobs; set `1` if 2 transcriptions OOM a 4GB GPU |

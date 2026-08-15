@@ -145,6 +145,7 @@ def _render_tracked(clip, camera_path, reframed_path, fps, clip_no: str = "", co
                 "zoom_idle": getattr(config, "reframe_zoom_idle", 1.05),
                 "zoom_ease": getattr(config, "reframe_zoom_ease", 0.04),
                 "zoom_deadband": getattr(config, "reframe_zoom_deadband", 0.05),
+                "min_headroom_ratio": getattr(config, "reframe_min_headroom_ratio", 0.12),
             }
         boxes = track_persons(
             clip, clip_no=clip_no,

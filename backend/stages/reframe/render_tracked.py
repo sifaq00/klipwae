@@ -31,6 +31,19 @@ def _update_target_zoom(raw_zoom: float, active_target: float, deadband: float) 
     return active_target
 
 
+def _clamp_headroom(cy: float, box_top: float, crop_h: float, min_headroom_ratio: float = 0.12) -> float:
+    """Ensures that the top of the speaker's bounding box (`box_top`) has at least
+    `crop_h * min_headroom_ratio` padding below the top of the crop frame (`cy - crop_h / 2`).
+    If `box_top < (cy - crop_h / 2) + crop_h * min_headroom_ratio`, adjust `cy` upward
+    (lower value in image coords) to preserve headroom and avoid cutting off the speaker's head/hair.
+    """
+    min_headroom = crop_h * min_headroom_ratio
+    crop_top = cy - crop_h / 2.0
+    if box_top < crop_top + min_headroom:
+        cy = box_top - min_headroom + crop_h / 2.0
+    return cy
+
+
 def render_tracked(
     input_path: Path,
     camera_path: list[tuple[float, float, str]],
@@ -52,6 +65,7 @@ def render_tracked(
     zoom_idle: float = 1.05,
     zoom_ease: float = 0.04,
     zoom_deadband: float = 0.05,
+    min_headroom_ratio: float = 0.12,
 ):
     # zone_names: side string → zona int (dari assign_zones median)
     zone_names = {0: "left", 1: "right"}
@@ -162,6 +176,10 @@ def render_tracked(
         if crop_h > h:
             crop_h = h
             crop_w = crop_h * (target_w / target_h)
+
+        if box:
+            cy = _clamp_headroom(cy, box[2], crop_h, min_headroom_ratio=min_headroom_ratio)
+
         x1 = int(cx - crop_w / 2)
         y1 = int(cy - crop_h / 2)
         x1 = max(0, min(x1, w - int(crop_w)))

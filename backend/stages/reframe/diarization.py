@@ -6,6 +6,7 @@ di-bundle lokal: models/pyannote/{diarization-3.1, wespeaker, segmentation-3.0}.
 """
 import os
 import structlog
+from stages.reframe.camera_path import smooth_rapid_speaker_turns
 
 logger = structlog.get_logger(__name__)
 

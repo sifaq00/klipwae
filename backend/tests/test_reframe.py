@@ -11,13 +11,14 @@ from stages.reframe.speaker_activity import _calc_mar
 
 TEST_VIDEO = Path(__file__).parent.parent / "data/raw/DkPEGUUnJGE.mp4"
 
-pytestmark = pytest.mark.skipif(
+requires_test_video = pytest.mark.skipif(
     not TEST_VIDEO.exists(),
     reason="fixture video data/raw/DkPEGUUnJGE.mp4 belum ada",
 )
 
 
 class TestGetVideoInfo:
+    @requires_test_video
     def test_normal_video(self):
         fps, dur = _get_video_info(TEST_VIDEO)
         assert 15 < fps < 60, f"fps={fps}"
@@ -29,6 +30,7 @@ class TestGetVideoInfo:
 
 
 class TestDetectLayout:
+    @requires_test_video
     def test_single_person(self):
         assert detect_layout(TEST_VIDEO) == "single_shot"
 
@@ -68,6 +70,50 @@ class TestCameraPath:
         raw = [(0, 1, "left"), (1, 2, "right"), (2, 3, "left")]
         assert build_camera_path(raw, 0) == [(0, 1, "left"), (1, 2, "right"), (2, 3, "left")]
 
+    def test_rapid_speaker_turns_smoothed(self):
+        from stages.reframe.camera_path import smooth_rapid_speaker_turns
+
+        # 4 rapid turns under 2.0s within 6.0s (switches at 1.2, 2.4, 3.6, 4.8)
+        rapid_path = [
+            (0.0, 1.2, "left"),
+            (1.2, 2.4, "right"),
+            (2.4, 3.6, "left"),
+            (3.6, 4.8, "right"),
+            (4.8, 10.0, "left"),
+        ]
+        smoothed = smooth_rapid_speaker_turns(rapid_path)
+        # All merged into continuous left hold
+        assert smoothed == [(0.0, 10.0, "left")]
+
+    def test_rapid_speaker_turns_then_stable_other_speaker(self):
+        from stages.reframe.camera_path import smooth_rapid_speaker_turns
+
+        # Rapid banter between left and right (1.0s each), then right speaks for 5s (5.0 to 10.0)
+        rapid_path = [
+            (0.0, 1.0, "left"),
+            (1.0, 2.0, "right"),
+            (2.0, 3.0, "left"),
+            (3.0, 4.0, "right"),
+            (4.0, 5.0, "left"),
+            (5.0, 10.0, "right"),
+        ]
+        smoothed = smooth_rapid_speaker_turns(rapid_path)
+        # Banter held on initial speaker (left) until stable switch to right at 5.0
+        assert smoothed == [(0.0, 5.0, "left"), (5.0, 10.0, "right")]
+
+    def test_slow_turns_preserved(self):
+        from stages.reframe.camera_path import smooth_rapid_speaker_turns
+
+        # Turns are 3.0s each (>= 2.0s) -> should NOT be smoothed
+        slow_path = [
+            (0.0, 3.0, "left"),
+            (3.0, 6.0, "right"),
+            (6.0, 9.0, "left"),
+            (9.0, 12.0, "right"),
+        ]
+        smoothed = smooth_rapid_speaker_turns(slow_path)
+        assert smoothed == slow_path
+
 
 class TestCalcMAR:
     def test_open_vs_closed(self):
@@ -98,6 +144,7 @@ class TestCalcMAR:
         assert _calc_mar(base, 100, 100) == 0.0
 
 
+@requires_test_video
 class TestRenderSmoke:
     def _make_clip(self, tmp_path) -> Path:
         clip = tmp_path / "smoke.mp4"

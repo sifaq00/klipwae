@@ -1,4 +1,4 @@
-﻿import json
+import json
 import os
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -80,7 +80,7 @@ def generate_ass(words: list[dict], style: str = "highlight",
 
     style='highlight': kata yang sedang diucapkan berwarna beda (karaoke style,
     umum di TikTok). style='static': satu baris kalimat muncul-hilang biasa.
-    style_cfg: dict konfigurasi gaya (font/ukuran/warna/dll) â€” kalau None,
+    style_cfg: dict konfigurasi gaya (font/ukuran/warna/dll) — kalau None,
     pakai default global dari utils.caption_style.
 
     words: list of {"text": str, "start": float, "end": float}
@@ -93,10 +93,14 @@ def generate_ass(words: list[dict], style: str = "highlight",
     if not words:
         return header
 
+    if style_cfg.get("auto_emoji", True):
+        from utils.caption_emojis import inject_caption_emojis
+        words = inject_caption_emojis(words)
+
     lines = [header]
     to_upper = bool(style_cfg.get("uppercase", False))
-    # Line spacing: sisip baris kosong ber-{\fsN} antar baris visual â€” libass
-    # nggak support field LineSpacing, trik ini kasih gap â‰ˆ N px.
+    # Line spacing: sisip baris kosong ber-{\fsN} antar baris visual — libass
+    # nggak support field LineSpacing, trik ini kasih gap ≈ N px.
     # {\fsN} harus di-reset ke ukuran asli setelahnya, kalau tidak baris
     # berikutnya ikut mengecil (override \fs nempel sampai akhir block).
     ls = max(0, int(style_cfg.get("line_spacing", 0) or 0))
@@ -110,16 +114,20 @@ def generate_ass(words: list[dict], style: str = "highlight",
         t = w["text"]
         return t.upper() if to_upper else t
 
-    def _wrap(texts: list[str], max_chars: int = 38) -> list[str]:
-        """Bungkus kata jadi baris visual â€” konsisten antar dialogue."""
+    def _wrap(texts: list[str], max_chars: int = 38) -> list[list[str]]:
+        """Bungkus kata jadi baris visual — konsisten antar dialogue."""
         out = []
-        cur = ""
+        cur = []
+        cur_len = 0
         for t in texts:
-            if cur and len(cur) + len(t) + 1 > max_chars:
+            t_len = len(t)
+            if cur and (cur_len + 1 + t_len > max_chars):
                 out.append(cur)
-                cur = t
+                cur = [t]
+                cur_len = t_len
             else:
-                cur = f"{cur} {t}" if cur else t
+                cur.append(t)
+                cur_len = (cur_len + 1 + t_len) if len(cur) > 1 else t_len
         if cur:
             out.append(cur)
         return out
@@ -128,15 +136,17 @@ def generate_ass(words: list[dict], style: str = "highlight",
         # Style TikTok: cuma kata yang SEDANG diucapkan yang kuning, sisanya
         # putih. Dikerjakan sebagai N baris dialogue (satu per kata aktif):
         # tiap baris = kalimat penuh, kata ke-i dibungkus {\c highlight}.
-        # Baris i tampil tepat di timing kata i â†’ libass gambar baris terbaru
+        # Baris i tampil tepat di timing kata i → libass gambar baris terbaru
         # di atas (z-order), jadi efeknya kata aktif kuning, sisanya putih.
         # TIDAK pakai \k (warna terkunci) dan TIDAK pakai \t (animasi rusak
-        # di libass build ini â€” end-state nempel dari awal).
+        # di libass build ini — end-state nempel dari awal).
         sentences = _group_sentences(words)
         hl = _hex_to_bgr(style_cfg.get("highlight_color", "#FFFF00"))
         txt = _hex_to_bgr(style_cfg.get("text_color", "#FFFFFF"))
         pop = bool(style_cfg.get("pop", False))
+        bounce = bool(style_cfg.get("bounce", True))
         active_scale = "\\fscx106\\fscy106" if pop else ""
+        bounce_tag = "{\\t(0,80,\\fscx114\\fscy114)\\t(80,160,\\fscx100\\fscy100)}" if bounce else ""
         for sent in sentences:
             texts = [_text(w) for w in sent]
             wrapped = _wrap(texts, wrap_max_chars)
@@ -151,14 +161,14 @@ def generate_ass(words: list[dict], style: str = "highlight",
                 # Bangun ulang baris visual dengan kata aktif di-highlight
                 parts = []
                 wi = 0
-                for li, line in enumerate(wrapped):
+                for li, line_words in enumerate(wrapped):
                     if li > 0:
                         parts.append(line_sep)
                     line_parts = []
-                    for word in line.split(" "):
+                    for word in line_words:
                         w_safe = _sanitize_ass_text(word)
                         if wi == i:
-                            line_parts.append("{\\c&H" + hl + active_scale + "}" + w_safe + "{\\c&H" + txt + "}")
+                            line_parts.append(bounce_tag + "{\\c&H" + hl + active_scale + "}" + w_safe + "{\\c&H" + txt + "}")
                         else:
                             line_parts.append(w_safe)
                         wi += 1
@@ -173,12 +183,12 @@ def generate_ass(words: list[dict], style: str = "highlight",
         for sent in sentences:
             start = sent[0]["start"]
             end = sent[-1]["end"]
-            # Sanitize per kata DULU â€” line_sep berisi tag \N/{\fs} yang
+            # Sanitize per kata DULU — line_sep berisi tag \N/{\fs} yang
             # jangan ikut di-escape.
             wrapped = _wrap([_sanitize_ass_text(_text(w)) for w in sent], wrap_max_chars)
             lines.append(
                 f"Dialogue: 0,{_sec_to_ass_time(start)},{_sec_to_ass_time(end)},"
-                f"Default,,0,0,0,,{line_sep.join(wrapped)}"
+                f"Default,,0,0,0,,{line_sep.join([' '.join(line) for line in wrapped])}"
             )
 
     return "\n".join(lines) + "\n"

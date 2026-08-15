@@ -16,6 +16,8 @@ DEFAULT_STYLE: dict = {
     "italic": False,
     "uppercase": False,
     "pop": False,
+    "bounce": True,
+    "auto_emoji": True,
     "spacing": 0,
     "line_spacing": 0,
     "text_color": "#FFFFFF",
@@ -35,7 +37,7 @@ KEYS = set(DEFAULT_STYLE.keys())
 # Tipe per key — dipakai validasi PUT supaya nilai rusak (size="abc")
 # tidak sampai ke ffmpeg/libass dan bikin preview/burn 500.
 INT_KEYS = {"size", "spacing", "line_spacing", "outline", "shadow", "margin_v"}
-BOOL_KEYS = {"enabled", "bold", "italic", "uppercase", "pop"}
+BOOL_KEYS = {"enabled", "bold", "italic", "uppercase", "pop", "bounce", "auto_emoji"}
 STR_KEYS = {
     "font", "text_color", "highlight_color", "outline_color",
     "shadow_color", "position", "border_style", "style",

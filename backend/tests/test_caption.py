@@ -145,9 +145,36 @@ def test_generate_ass_empty():
     print("OK test_generate_ass_empty")
 
 
+def test_generate_ass_bounce():
+    words = [{"text": "halo", "start": 0.0, "end": 0.6}, {"text": "dunia", "start": 0.6, "end": 1.2}]
+    ass_bounce = generate_ass(words, style="highlight", style_cfg=_cfg(bounce=True))
+    assert "{\\t(0,80,\\fscx114\\fscy114)\\t(80,160,\\fscx100\\fscy100)}" in ass_bounce
+
+    ass_no_bounce = generate_ass(words, style="highlight", style_cfg=_cfg(bounce=False))
+    assert "\\fscx114" not in ass_no_bounce
+
+
+def test_generate_ass_auto_emoji():
+    words = [
+        {"text": "wajah", "start": 0.0, "end": 0.5},
+        {"text": "glowing", "start": 0.5, "end": 1.0},
+        {"text": "mantap", "start": 1.0, "end": 1.5},
+    ]
+    ass_emoji = generate_ass(words, style="highlight", style_cfg=_cfg(auto_emoji=True))
+    assert "glowing ✨" in ass_emoji
+    assert "mantap ✨" in ass_emoji
+    assert "wajah 🧴" in ass_emoji
+
+    ass_no_emoji = generate_ass(words, style="highlight", style_cfg=_cfg(auto_emoji=False))
+    assert "✨" not in ass_no_emoji
+    assert "🧴" not in ass_no_emoji
+
+
 def test_default_style_margin_safe_for_tiktok():
     from utils.caption_style import DEFAULT_STYLE
     assert DEFAULT_STYLE["margin_v"] == 240
+    assert DEFAULT_STYLE["bounce"] is True
+    assert DEFAULT_STYLE["auto_emoji"] is True
 
 
 def test_caption_stage_no_clips(tmp_path: Path):
@@ -196,8 +223,11 @@ if __name__ == "__main__":
     test_ass_header_custom_style()
     test_generate_ass_static()
     test_generate_ass_highlight_karaoke_lines()
+    test_generate_ass_bounce()
+    test_generate_ass_auto_emoji()
     test_generate_ass_uppercase()
     test_generate_ass_empty()
+    test_wrap_scales_with_font_size()
     with tempfile.TemporaryDirectory() as tmp:
         test_caption_stage_no_clips(Path(tmp))
     print("\nAll caption tests passed.")

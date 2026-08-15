@@ -60,6 +60,8 @@ export interface CaptionStyle {
   italic: boolean;
   uppercase: boolean;
   pop: boolean;
+  bounce?: boolean;
+  auto_emoji?: boolean;
   spacing: number;
   line_spacing: number;
   text_color: string;

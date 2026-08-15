@@ -10,6 +10,8 @@ const DEFAULTS: CaptionStyle = {
   italic: false,
   uppercase: false,
   pop: false,
+  bounce: true,
+  auto_emoji: true,
   spacing: 0,
   line_spacing: 0,
   text_color: "#FFFFFF",
@@ -20,7 +22,7 @@ const DEFAULTS: CaptionStyle = {
   shadow: 3,
   shadow_color: "#000000",
   position: "bottom",
-  margin_v: 100,
+  margin_v: 240,
   style: "highlight",
 };
 
@@ -237,6 +239,8 @@ export function StyleEditor({ value, onChange, compact, previewSide = "bottom" }
         <ToggleField label="Italic" value={value.italic} onChange={(v) => set("italic", v)} />
         <ToggleField label="ALL CAPS" value={value.uppercase} onChange={(v) => set("uppercase", v)} />
         <ToggleField label="Animasi pop" value={value.pop} onChange={(v) => set("pop", v)} />
+        <ToggleField label="Animasi Bounce" value={value.bounce ?? true} onChange={(v) => set("bounce", v)} />
+        <ToggleField label="Auto Emoji" value={value.auto_emoji ?? true} onChange={(v) => set("auto_emoji", v)} />
         <Field label="Line spacing">
           <div className="flex items-center gap-2">
             <input type="range" min={0} max={80} step={2} value={value.line_spacing}

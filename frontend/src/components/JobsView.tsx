@@ -1,5 +1,5 @@
 import type { Job } from "../types";
-import { fmtDate, fmtDuration, STAGES, statusMeta } from "../lib/stages";
+import { fmtDate, fmtDuration, STAGES, statusMeta, renderStageIcon } from "../lib/stages";
 
 interface Props {
   jobs: Job[];
@@ -85,11 +85,13 @@ function JobCard({ job, index, active, onOpen, onDelete }: { job: Job; index: nu
       onClick={onOpen}
     >
       <div className="flex items-start gap-4">
-        <div className={`relative mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${meta.dot} ${job.running ? "animate-pulseGlow" : ""}`}>
-          {job.running && (
-            <span className={`absolute inset-0 animate-ping rounded-full ${meta.dot} opacity-40`} />
-          )}
-        </div>
+        <img
+          src={`https://i.ytimg.com/vi/${job.id}/mqdefault.jpg`}
+          alt=""
+          loading="lazy"
+          className="h-20 w-32 shrink-0 rounded-xl object-cover"
+          onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+        />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
             <h3 className="font-display truncate text-[15px] font-semibold text-slate-100">
@@ -133,7 +135,10 @@ function JobCard({ job, index, active, onOpen, onDelete }: { job: Job; index: nu
                   style={{ width: `${progress}%` }}
                 />
               </div>
-              <span className={`chip border ${meta.color}`}>{meta.label}</span>
+              <span className={`chip border ${meta.color} gap-1.5`}>
+                {renderStageIcon(job.status, "h-3 w-3 shrink-0")}
+                {meta.label}
+              </span>
             </div>
           </div>
         </div>

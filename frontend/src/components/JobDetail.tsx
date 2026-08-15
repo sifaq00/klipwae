@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { CaptionStyle, Job, Segment } from "../types";
 import { getJobCaptionStyle, getSegments, killJob, markSegment, rejectSegment, reburnCaptions, retryJob, saveJobCaptionStyle, streamLog } from "../lib/api";
-import { fmtDuration, STAGES, statusMeta } from "../lib/stages";
+import { fmtDuration, STAGES, statusMeta, renderStageIcon } from "../lib/stages";
 import { SegmentCard } from "./SegmentCard";
 import { StyleEditor, defaultStyle } from "./StyleEditor";
 
@@ -256,12 +256,26 @@ export function JobDetail({ job, onBack, onRefresh, onRejected, onDelete, videoR
 
       <div className="glass animate-fadeUp p-5">
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-          <span className={`chip border ${meta.color}`}>{meta.label}</span>
+          <span className={`chip border ${meta.color} gap-1.5`}>
+            {renderStageIcon(job.status, "h-3.5 w-3.5 shrink-0")}
+            {meta.label}
+          </span>
           <span className="font-mono text-xs text-slate-500">{job.id}</span>
           {job.duration_sec ? <span className="text-xs text-slate-500">{fmtDuration(job.duration_sec)} · episode asli</span> : null}
         </div>
-        <h1 className="font-display mt-2 text-xl font-bold leading-snug text-slate-100">{job.title || "Episode tanpa judul"}</h1>
-        {job.channel && <p className="mt-1 text-sm text-slate-400">{job.channel}</p>}
+        <div className="mt-3 flex items-start gap-4">
+          <img
+            src={`https://i.ytimg.com/vi/${job.id}/mqdefault.jpg`}
+            alt=""
+            loading="lazy"
+            className="h-12 w-20 shrink-0 rounded-xl object-cover"
+            onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+          />
+          <div className="min-w-0 flex-1">
+            <h1 className="font-display text-xl font-bold leading-snug text-slate-100">{job.title || "Episode tanpa judul"}</h1>
+            {job.channel && <p className="mt-1 text-sm text-slate-400">{job.channel}</p>}
+          </div>
+        </div>
         {job.status === "failed" && job.error_message && (
           <p className="mt-3 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-300">{job.error_message}</p>
         )}
@@ -273,7 +287,8 @@ export function JobDetail({ job, onBack, onRefresh, onRejected, onDelete, videoR
         {job.running && (
           <div className="mt-4">
             <div className="mb-1.5 flex items-center justify-between text-xs">
-              <span className="font-semibold text-cyan-300">
+              <span className="flex items-center gap-1.5 font-semibold text-cyan-300">
+                {renderStageIcon(progress ? progress.stage : job.status, "h-3.5 w-3.5 animate-pulse text-cyan-400 shrink-0")}
                 {progress ? `${stageLabel(progress.stage)} · ${progress.pct.toFixed(0)}%` : `${stageLabel(job.status)}…`}
               </span>
               <span className="font-mono text-slate-500">
@@ -499,12 +514,19 @@ function PipelineRail({ stages, jobStatus, videoRes }: { stages: Job["stages"]; 
           >
             <div className="flex items-center justify-between">
               <span className="font-mono text-[10px] text-slate-500">{String(i + 1).padStart(2, "0")}</span>
-              {isActive && <span className="h-1.5 w-1.5 animate-pulseGlow rounded-full bg-accent" />}
-              {isDone && <svg className="h-3.5 w-3.5 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>}
-              {isFailed && <svg className="h-3.5 w-3.5 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" d="M6 18L18 6M6 6l12 12" /></svg>}
+              <div className="flex items-center gap-1">
+                {isActive && (
+                  <svg className="h-3 w-3 animate-spin text-accent" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                )}
+                {isDone && <svg className="h-3.5 w-3.5 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>}
+                {isFailed && <svg className="h-3.5 w-3.5 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" d="M6 18L18 6M6 6l12 12" /></svg>}
+              </div>
             </div>
-            <div className={`mt-1.5 font-display text-xs font-semibold ${isActive ? "text-white" : isDone ? "text-emerald-300" : isFailed ? "text-red-300" : "text-slate-400"}`}>
-              {s.label}
+            <div className={`mt-2 flex items-center gap-1.5 font-display text-xs font-semibold ${isActive ? "text-white" : isDone ? "text-emerald-300" : isFailed ? "text-red-300" : "text-slate-400"}`}>
+              {renderStageIcon(s.key, `h-3.5 w-3.5 shrink-0 ${isActive ? "text-accent animate-pulse" : isDone ? "text-emerald-400" : isFailed ? "text-red-400" : "text-slate-500"}`)}
+              <span>{s.label}</span>
             </div>
             <div className="mt-0.5 text-[10px] text-slate-500">
               {s.key === "ingest" && videoRes ? `yt-dlp · ${videoRes}p` : s.hint}

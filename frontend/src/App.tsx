@@ -92,15 +92,22 @@ export default function App() {
   return (
     <div className="mx-auto max-w-6xl px-4 pb-16 pt-6 sm:pt-10">
       <header className="mb-8 flex items-center justify-between">
-        <div className="flex items-center gap-3.5">
+        <div className="flex items-center gap-3">
           <div className="group relative flex shrink-0 items-center justify-center transition-transform duration-200 hover:scale-105">
-            <img src="/logo.png" alt="Klipwae Studio Logo" className="h-9 w-9 sm:h-10 sm:w-10 object-contain drop-shadow-[0_0_12px_rgba(0,242,254,0.4)]" />
+            <img
+              src="/logo.png"
+              alt="Klipwae Studio Logo"
+              className="h-[34px] w-[34px] object-contain drop-shadow-[0_0_10px_rgba(0,242,254,0.35)]"
+            />
           </div>
-          <div>
-            <h1 className="font-display text-xl font-bold tracking-tight">
-              <span className="text-gradient">Klipwae</span> <span className="text-slate-400">Studio</span>
+          <div className="flex h-[34px] flex-col justify-between py-0.5">
+            <h1 className="font-display text-[18px] font-bold leading-none tracking-tight">
+              <span className="text-gradient">Klipwae</span>{" "}
+              <span className="text-slate-300">Studio</span>
             </h1>
-            <p className="text-[11px] text-slate-500">Podcast → klip produk → siap keranjang kuning</p>
+            <p className="text-[10.5px] font-medium leading-none text-slate-400">
+              Podcast → klip produk → siap keranjang kuning
+            </p>
           </div>
         </div>
         {jobs.some((j) => j.running) ? (

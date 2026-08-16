@@ -6,7 +6,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from stages.reframe.render_tracked import _switch_alpha, _follow_target
+from stages.reframe.render_tracked import _switch_alpha, _follow_target, _zone_anchors
 
 
 def test_no_switch_uses_base_alpha():
@@ -52,6 +52,42 @@ def test_follow_target_snaps_when_boosted():
     assert abs(t - 300.0) < 1e-6, f"EMA 0.25 harus 300, got {t}"
 
 
+def test_zone_anchors_median_position():
+    """Anchor zona = median posisi orang (stabil walau ada outlier gerak)."""
+    frames = [
+        {"boxes": [
+            (1, 100, 100, 200, 300, 0.9),   # track 1 kiri
+            (2, 900, 100, 1000, 300, 0.9),  # track 2 kanan
+        ]},
+        {"boxes": [
+            (1, 110, 100, 210, 300, 0.9),
+            (2, 910, 100, 1010, 300, 0.9),
+        ]},
+        {"boxes": [
+            (1, 120, 100, 220, 300, 0.9),
+            (2, 920, 100, 1020, 300, 0.9),
+        ]},
+    ]
+    zone_map = {1: 0, 2: 1}
+    anchors = _zone_anchors(frames, zone_map, head_bias=0.5)
+    # zona 0: x center 150/160/170 median 160, y = 100+(100)*0.5 = 200
+    assert abs(anchors[0][0] - 160.0) < 1e-6, anchors[0]
+    assert abs(anchors[0][1] - 200.0) < 1e-6, anchors[0]
+    # zona 1: x centers 950/960/970 median 960
+    assert abs(anchors[1][0] - 960.0) < 1e-6, anchors[1]
+
+
+def test_zone_anchors_ignores_low_conf_and_empty():
+    frames = [
+        {"boxes": [(1, 100, 100, 200, 300, 0.1), (2, 900, 100, 1000, 300, 0.9)]},
+    ]
+    zone_map = {1: 0, 2: 1}
+    anchors = _zone_anchors(frames, zone_map, conf_min=0.35)
+    assert 0 in anchors  # fallback (0,0) utk zona kosong
+    assert anchors[0] == (0.0, 0.0)
+    assert abs(anchors[1][0] - 950.0) < 1e-6
+
+
 def test_follow_target_ema_moves_toward_target():
     cur, tgt = 0.0, 100.0
     n = 0
@@ -69,4 +105,6 @@ if __name__ == "__main__":
     test_no_path_single_shot_never_boosts()
     test_follow_target_snaps_when_boosted()
     test_follow_target_ema_moves_toward_target()
+    test_zone_anchors_median_position()
+    test_zone_anchors_ignores_low_conf_and_empty()
     print("all ok")

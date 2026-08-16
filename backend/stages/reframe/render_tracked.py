@@ -24,6 +24,31 @@ def _follow_target(cur: float, target: float, snap: bool, alpha: float = 0.25) -
     return cur + (target - cur) * alpha
 
 
+def _zone_anchors(boxes_by_frame: list, zone_map: dict[int, int],
+                  head_bias: float = 0.22, conf_min: float = 0.35) -> dict[int, tuple[float, float]]:
+    """Anchor per zona: median (x-center, y+head_bias) SEMUA box track di zona
+    itu. Orang podcast duduk di posisi tetap → median stabil, kamera terkunci
+    di sini (mode no-pan, zoom-only). Kalau satu zona kosong → fallback ke
+    center frame."""
+    import statistics
+    xs: dict[int, list[float]] = {}
+    ys: dict[int, list[float]] = {}
+    for f in boxes_by_frame:
+        for bid, x1, y1, x2, y2, conf in f["boxes"]:
+            zone = zone_map.get(bid)
+            if zone is None or conf < conf_min:
+                continue
+            xs.setdefault(zone, []).append((x1 + x2) / 2)
+            ys.setdefault(zone, []).append(y1 + (y2 - y1) * head_bias)
+    anchors = {}
+    for zone in sorted(set(zone_map.values())):
+        if xs.get(zone):
+            anchors[zone] = (statistics.median(xs[zone]), statistics.median(ys[zone]))
+        else:
+            anchors[zone] = (0.0, 0.0)  # fallback: dipenuhi caller dengan center frame
+    return anchors
+
+
 def _switch_alpha(prev_side, cur_side, boost_left, base, boost, boost_frames):
     """Alpha untuk frame ini. Saat side BERUBAH → boost (snap cepat, penonton
     langsung lihat speaker baru — glide EMA 0.5-1s terasa "kejar-kejaran" di
@@ -118,17 +143,24 @@ def render_tracked(
     runtime.set_proc(proc)
 
     cx, cy = w / 2, h / 2
-    t_cx, t_cy = w / 2, h / 2   # target halus (EMA kedua)
     zoom = zoom_idle
     active_target_zoom = zoom_idle
-    db_x = w * deadband
-    db_y = h * deadband
     hold_left = 0
     hold_frames = int(hold_sec * fps)
-    # Harden-on-switch: side ganti → alpha naik sementara (snap cepat ke
-    # speaker baru), lalu kembali halus. Cegah kesan kamera "kejar-kejaran".
-    SWITCH_BOOST_FRAMES = 6
-    switch_boost_left = 0
+    # MODE SNAP-FIXED-ZOOM: kamera terkunci di anchor zona (median posisi
+    # orang), switch side → SNAP instan (bukan glide). Gerak orang TIDAK
+    # diikuti (no-pan) — hanya zoom in/out dari ukuran box.
+    if has_path:
+        anchors = _zone_anchors(boxes_by_frame, zone_map, head_bias=head_bias,
+                                conf_min=CONF_MIN)
+    else:
+        # single_shot: satu anchor global = median semua track
+        all_bids: dict[int, int] = {}
+        for f in boxes_by_frame:
+            for bid, *_ in f["boxes"]:
+                all_bids.setdefault(bid, 0)
+        anchors = _zone_anchors(boxes_by_frame, all_bids, head_bias=head_bias,
+                                conf_min=CONF_MIN)
     prev_side: str | None = None
     idx = 0
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
@@ -154,6 +186,7 @@ def render_tracked(
         target_zoom = None
         if not has_path or seg:
             box = None
+            zone = None
             if has_path and seg:
                 zone = next((z for z, n in zone_names.items() if n == seg), None)
                 if zone is not None:
@@ -164,32 +197,23 @@ def render_tracked(
                 box = largest_box_any(boxes_by_frame, idx)
 
             if box:
-                # Harden-on-switch: deteksi side berubah → boost alpha
-                alpha = smooth_alpha
-                snap_target = False
+                # SNAP-on-switch: side berubah → kamera langsung center di
+                # anchor zona (tanpa glide dari samping). No-pan setelahnya.
                 if has_path and seg is not None:
-                    alpha, switch_boost_left = _switch_alpha(
-                        prev_side, seg, switch_boost_left,
-                        base=smooth_alpha, boost=0.5, boost_frames=SWITCH_BOOST_FRAMES,
-                    )
-                    snap_target = alpha != smooth_alpha
-                prev_side = seg if has_path else None
-                bx = (box[1] + box[3]) / 2
-                by = box[2] + (box[4] - box[2]) * head_bias
-                # EMA kedua: target box sendiri dihaluskan dulu (buang jitter deteksi)
-                # Saat switch: SNAP target — kalau tidak, EMA 0.25 jadi bottleneck
-                # (kamera ngejar target yang melayang → settle masih ~1.3s).
-                t_cx = _follow_target(t_cx, bx, snap=snap_target, alpha=target_alpha)
-                t_cy = _follow_target(t_cy, by, snap=snap_target, alpha=target_alpha)
-                # soft deadzone: kamera gerak mulus tanpa hentakan stop-and-go
-                dx = t_cx - cx
-                dy = t_cy - cy
-                excess_x = _apply_soft_deadzone(dx, db_x)
-                excess_y = _apply_soft_deadzone(dy, db_y)
-                if excess_x != 0.0:
-                    cx += excess_x * alpha
-                if excess_y != 0.0:
-                    cy += excess_y * alpha
+                    if seg != prev_side:
+                        ax, ay = anchors.get(zone, (w / 2, h / 2))
+                        if ax == 0.0 and ay == 0.0:
+                            ax, ay = w / 2, h / 2
+                        cx, cy = ax, ay
+                        prev_side = seg
+                else:
+                    # single_shot: snap sekali di frame pertama ada box
+                    if prev_side is None:
+                        ax, ay = anchors.get(0, (w / 2, h / 2))
+                        if ax == 0.0 and ay == 0.0:
+                            ax, ay = w / 2, h / 2
+                        cx, cy = ax, ay
+                        prev_side = "locked"
                 # Auto-zoom stabil dari ukuran box dengan filter hysteresis
                 box_h = max(1.0, box[4] - box[2])
                 raw_zoom = max(zoom_min, min(zoom_max, (h * zoom_fit) / box_h))
@@ -197,14 +221,12 @@ def render_tracked(
                 target_zoom = active_target_zoom
                 hold_left = hold_frames
             else:
-                # Track hilang sesaat → TAHAN posisi (jangan drift langsung)
+                # Track hilang sesaat → TAHAN di anchor (no-pan), zoom balik
+                # idle. Jangan drift ke center — mode ini kamera tak bergerak.
                 if hold_left > 0:
                     hold_left -= 1
-                else:
-                    cx += (w / 2 - cx) * 0.02
-                    cy += (h / 2 - cy) * 0.02
-                    active_target_zoom = _update_target_zoom(zoom_idle, active_target_zoom, zoom_deadband)
-                    target_zoom = active_target_zoom
+                active_target_zoom = _update_target_zoom(zoom_idle, active_target_zoom, zoom_deadband)
+                target_zoom = active_target_zoom
         else:
             active_target_zoom = _update_target_zoom(zoom_idle, active_target_zoom, zoom_deadband)
             target_zoom = active_target_zoom

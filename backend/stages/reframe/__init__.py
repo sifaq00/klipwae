@@ -114,9 +114,6 @@ def _render_tracked(clip, camera_path, reframed_path, fps, clip_no: str = "", co
         cfg = {}
         if config is not None:
             cfg = {
-                "smooth_alpha": getattr(config, "reframe_smooth_alpha", 0.08),
-                "target_alpha": getattr(config, "reframe_target_alpha", 0.25),
-                "deadband": getattr(config, "reframe_deadband", 0.012),
                 "hold_sec": getattr(config, "reframe_hold_sec", 0.8),
                 "head_bias": getattr(config, "reframe_head_bias", 0.22),
                 "zoom_fit": getattr(config, "reframe_zoom_fit", 0.6),

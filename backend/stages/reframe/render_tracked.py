@@ -1,4 +1,4 @@
-"""Render 9:16 dengan kamera halus mengikuti pembicara aktif (YOLO boxes).
+﻿"""Render 9:16 dengan kamera halus mengikuti pembicara aktif (YOLO boxes).
 
 Loop frame per frame di Python → crop mengikuti box target (EMA smoothing) →
 pipe ke ffmpeg NVENC. Audio di-mux dari source. Gaya Opus Clip: pan halus
@@ -13,15 +13,6 @@ import numpy as np
 from utils.ffmpeg_helpers import run_ffmpeg, video_encode_args
 
 CONF_MIN = 0.35        # box di bawah confidence ini diabaikan
-
-
-def _follow_target(cur: float, target: float, snap: bool, alpha: float = 0.25) -> float:
-    """EMA target. Saat snap=True (boost switch aktif): langsung ke target —
-    EMA target (0.25) jadi bottleneck kalau tak di-snap: kamera ngejar target
-    yang melayang pelan, settle tetap ~1.3s walau camera alpha 0.5."""
-    if snap:
-        return target
-    return cur + (target - cur) * alpha
 
 
 def _segment_anchors(boxes_by_frame: list, zone_map: dict[int, int],
@@ -65,9 +56,8 @@ def _segment_anchors(boxes_by_frame: list, zone_map: dict[int, int],
 def _zone_anchors(boxes_by_frame: list, zone_map: dict[int, int],
                   head_bias: float = 0.22, conf_min: float = 0.35) -> dict[int, tuple[float, float]]:
     """Anchor per zona: median (x-center, y+head_bias) SEMUA box track di zona
-    itu. Orang podcast duduk di posisi tetap → median stabil, kamera terkunci
-    di sini (mode no-pan, zoom-only). Kalau satu zona kosong → fallback ke
-    center frame."""
+    itu (fallback global — prefer _segment_anchors utk mode path). Zona tanpa
+    box → None (caller fallback ke center frame)."""
     import statistics
     xs: dict[int, list[float]] = {}
     ys: dict[int, list[float]] = {}
@@ -83,32 +73,8 @@ def _zone_anchors(boxes_by_frame: list, zone_map: dict[int, int],
         if xs.get(zone):
             anchors[zone] = (statistics.median(xs[zone]), statistics.median(ys[zone]))
         else:
-            anchors[zone] = (0.0, 0.0)  # fallback: dipenuhi caller dengan center frame
+            anchors[zone] = None  # caller fallback ke center frame
     return anchors
-
-
-def _switch_alpha(prev_side, cur_side, boost_left, base, boost, boost_frames):
-    """Alpha untuk frame ini. Saat side BERUBAH → boost (snap cepat, penonton
-    langsung lihat speaker baru — glide EMA 0.5-1s terasa "kejar-kejaran" di
-    klip multi-speaker). Setelah window boost habis → kembali ke base alpha
-    (follow halus, buang jitter)."""
-    if boost_left > 0:
-        boost_left -= 1
-        if boost_left > 0:
-            return boost, boost_left
-        return base, 0
-    if prev_side is not None and cur_side is not None and cur_side != prev_side:
-        return boost, boost_frames - 1
-    return base, 0
-
-
-def _apply_soft_deadzone(displacement: float, deadband: float) -> float:
-    """Calculate excess displacement beyond deadband.
-    Starts smoothly from 0.0 at the deadband threshold."""
-    if abs(displacement) <= deadband:
-        return 0.0
-    import math
-    return math.copysign(abs(displacement) - deadband, displacement)
 
 
 def _update_target_zoom(raw_zoom: float, active_target: float, deadband: float) -> float:
@@ -141,9 +107,6 @@ def render_tracked(
     target_w: int = 1080,
     target_h: int = 1920,
     clip_no: str = "",
-    smooth_alpha: float = 0.08,
-    target_alpha: float = 0.25,
-    deadband: float = 0.012,
     hold_sec: float = 0.8,
     head_bias: float = 0.22,
     zoom_fit: float = 0.6,
@@ -191,6 +154,9 @@ def render_tracked(
     if has_path:
         seg_anchors = _segment_anchors(boxes_by_frame, zone_map, camera_path, fps,
                                        head_bias=head_bias, conf_min=CONF_MIN)
+        # fallback global per zona: segmen tanpa box dominan → zona → center
+        zone_anchors = _zone_anchors(boxes_by_frame, zone_map, head_bias=head_bias,
+                                     conf_min=CONF_MIN)
     else:
         # single_shot: satu anchor global = median semua track
         all_bids: dict[int, int] = {}
@@ -198,8 +164,8 @@ def render_tracked(
             for bid, *_ in f["boxes"]:
                 all_bids.setdefault(bid, 0)
         seg_anchors = {}
-        fallback_anchor = _zone_anchors(boxes_by_frame, all_bids, head_bias=head_bias,
-                                        conf_min=CONF_MIN).get(0)
+        zone_anchors = _zone_anchors(boxes_by_frame, all_bids, head_bias=head_bias,
+                                     conf_min=CONF_MIN)
     prev_side: str | None = None
     cur_seg_idx: int | None = None
     idx = 0
@@ -239,17 +205,26 @@ def render_tracked(
             if box:
                 # SNAP-on-switch: ganti segmen (side berubah) → kamera
                 # langsung center di anchor SEGMEN itu (tanpa glide).
+                # Fallback chain: anchor segmen → anchor zona global → center
+                # (segmen tanpa box dominan jangan bikin kamera lompat center
+                # lalu orangnya ke-potong).
                 if has_path and seg is not None:
                     seg_idx = next((i for i, (s, e, _) in enumerate(camera_path) if s <= t < e), None)
                     if seg_idx != cur_seg_idx:
-                        ax, ay = seg_anchors.get((zone, seg_idx), (w / 2, h / 2))
+                        ax, ay = seg_anchors.get((zone, seg_idx))
+                        if ax is None or ay is None:
+                            za = zone_anchors.get(zone)
+                            if za:
+                                ax, ay = za
+                            else:
+                                ax, ay = w / 2, h / 2
                         cx, cy = ax, ay
                         cur_seg_idx = seg_idx
-                        prev_side = seg
                 else:
                     # single_shot: snap sekali di frame pertama ada box
                     if prev_side is None:
-                        ax, ay = fallback_anchor or (w / 2, h / 2)
+                        za = zone_anchors.get(0)
+                        ax, ay = za if za else (w / 2, h / 2)
                         cx, cy = ax, ay
                         prev_side = "locked"
                 # Auto-zoom stabil dari ukuran box dengan filter hysteresis

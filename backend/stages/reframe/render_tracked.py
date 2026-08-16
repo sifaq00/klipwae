@@ -24,6 +24,44 @@ def _follow_target(cur: float, target: float, snap: bool, alpha: float = 0.25) -
     return cur + (target - cur) * alpha
 
 
+def _segment_anchors(boxes_by_frame: list, zone_map: dict[int, int],
+                     camera_path: list[tuple[float, float, str]], fps: float,
+                     head_bias: float = 0.22, conf_min: float = 0.35) -> dict[tuple, tuple[float, float]]:
+    """Anchor PER SEGMEN camera_path — bukan per klip. Orang bisa bergeser
+    antar segmen (ganti posisi duduk); anchor global bikin orang off-center
+    di sebagian klip. Dipakai box TERBESAR per frame (dominant speaker) →
+    median, buang outlier."""
+    import statistics
+    # frame range per segmen
+    seg_ranges: dict[int, tuple[int, int]] = {}
+    for i, (s, e, _side) in enumerate(camera_path):
+        seg_ranges[i] = (int(s * fps), max(int(s * fps), int(e * fps)))
+    xs: dict[tuple, list[float]] = {}
+    ys: dict[tuple, list[float]] = {}
+    for i, (f0, f1) in seg_ranges.items():
+        for fi in range(f0, min(f1, len(boxes_by_frame))):
+            best = None
+            best_area = 0.0
+            for bid, x1, y1, x2, y2, conf in boxes_by_frame[fi]["boxes"]:
+                zone = zone_map.get(bid)
+                if zone is None or conf < conf_min:
+                    continue
+                area = (x2 - x1) * (y2 - y1)
+                if area > best_area:
+                    best_area = area
+                    best = (zone, (x1 + x2) / 2, y1 + (y2 - y1) * head_bias)
+            if best:
+                zone, bx, by = best
+                key = (zone, i)
+                xs.setdefault(key, []).append(bx)
+                ys.setdefault(key, []).append(by)
+    anchors = {}
+    for key in xs:
+        if xs[key]:
+            anchors[key] = (statistics.median(xs[key]), statistics.median(ys[key]))
+    return anchors
+
+
 def _zone_anchors(boxes_by_frame: list, zone_map: dict[int, int],
                   head_bias: float = 0.22, conf_min: float = 0.35) -> dict[int, tuple[float, float]]:
     """Anchor per zona: median (x-center, y+head_bias) SEMUA box track di zona
@@ -151,17 +189,19 @@ def render_tracked(
     # orang), switch side → SNAP instan (bukan glide). Gerak orang TIDAK
     # diikuti (no-pan) — hanya zoom in/out dari ukuran box.
     if has_path:
-        anchors = _zone_anchors(boxes_by_frame, zone_map, head_bias=head_bias,
-                                conf_min=CONF_MIN)
+        seg_anchors = _segment_anchors(boxes_by_frame, zone_map, camera_path, fps,
+                                       head_bias=head_bias, conf_min=CONF_MIN)
     else:
         # single_shot: satu anchor global = median semua track
         all_bids: dict[int, int] = {}
         for f in boxes_by_frame:
             for bid, *_ in f["boxes"]:
                 all_bids.setdefault(bid, 0)
-        anchors = _zone_anchors(boxes_by_frame, all_bids, head_bias=head_bias,
-                                conf_min=CONF_MIN)
+        seg_anchors = {}
+        fallback_anchor = _zone_anchors(boxes_by_frame, all_bids, head_bias=head_bias,
+                                        conf_min=CONF_MIN).get(0)
     prev_side: str | None = None
+    cur_seg_idx: int | None = None
     idx = 0
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     while True:
@@ -197,21 +237,19 @@ def render_tracked(
                 box = largest_box_any(boxes_by_frame, idx)
 
             if box:
-                # SNAP-on-switch: side berubah → kamera langsung center di
-                # anchor zona (tanpa glide dari samping). No-pan setelahnya.
+                # SNAP-on-switch: ganti segmen (side berubah) → kamera
+                # langsung center di anchor SEGMEN itu (tanpa glide).
                 if has_path and seg is not None:
-                    if seg != prev_side:
-                        ax, ay = anchors.get(zone, (w / 2, h / 2))
-                        if ax == 0.0 and ay == 0.0:
-                            ax, ay = w / 2, h / 2
+                    seg_idx = next((i for i, (s, e, _) in enumerate(camera_path) if s <= t < e), None)
+                    if seg_idx != cur_seg_idx:
+                        ax, ay = seg_anchors.get((zone, seg_idx), (w / 2, h / 2))
                         cx, cy = ax, ay
+                        cur_seg_idx = seg_idx
                         prev_side = seg
                 else:
                     # single_shot: snap sekali di frame pertama ada box
                     if prev_side is None:
-                        ax, ay = anchors.get(0, (w / 2, h / 2))
-                        if ax == 0.0 and ay == 0.0:
-                            ax, ay = w / 2, h / 2
+                        ax, ay = fallback_anchor or (w / 2, h / 2)
                         cx, cy = ax, ay
                         prev_side = "locked"
                 # Auto-zoom stabil dari ukuran box dengan filter hysteresis

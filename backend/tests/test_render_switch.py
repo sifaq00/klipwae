@@ -6,7 +6,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from stages.reframe.render_tracked import _switch_alpha, _follow_target, _zone_anchors
+from stages.reframe.render_tracked import _switch_alpha, _follow_target, _zone_anchors, _segment_anchors
 
 
 def test_no_switch_uses_base_alpha():
@@ -98,6 +98,28 @@ def test_follow_target_ema_moves_toward_target():
     assert abs(cur - tgt) < 1.0
 
 
+def test_segment_anchors_per_window():
+    """Anchor per SEGMEN: orang bergeser antar segmen → anchor ikut segmen
+    (bukan median global yang bikin off-center). Box terbesar per frame."""
+    # 30 frame @30fps: segmen 0 = 0-1s, segmen 1 = 1-2s
+    frames = []
+    for i in range(60):
+        if i < 30:  # segmen 0: orang di x~400
+            boxes = [(1, 300, 100, 500, 300, 0.9), (2, 100, 100, 200, 300, 0.5)]
+        else:       # segmen 1: orang bergeser ke x~800
+            boxes = [(1, 700, 100, 900, 300, 0.9)]
+        frames.append({"boxes": boxes})
+    zone_map = {1: 0, 2: 0}
+    camera_path = [(0.0, 1.0, "left"), (1.0, 2.0, "left")]
+    anchors = _segment_anchors(frames, zone_map, camera_path, fps=30.0, head_bias=0.5)
+    # segmen 0: box terbesar tiap frame = track 1 (area 40000 > 10000) x~400
+    assert abs(anchors[(0, 0)][0] - 400.0) < 2.0, anchors
+    # segmen 1: x~800
+    assert abs(anchors[(0, 1)][0] - 800.0) < 2.0, anchors
+    # y: head_bias 0.5 → 100 + (300-100)*0.5 = 200
+    assert abs(anchors[(0, 0)][1] - 200.0) < 1e-6
+
+
 if __name__ == "__main__":
     test_no_switch_uses_base_alpha()
     test_switch_boosts_alpha()
@@ -107,4 +129,5 @@ if __name__ == "__main__":
     test_follow_target_ema_moves_toward_target()
     test_zone_anchors_median_position()
     test_zone_anchors_ignores_low_conf_and_empty()
+    test_segment_anchors_per_window()
     print("all ok")

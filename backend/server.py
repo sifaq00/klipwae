@@ -562,6 +562,19 @@ async def re_render_job(job_id: str):
     if job_id in JOB_RUNNERS and JOB_RUNNERS[job_id].is_alive:
         raise HTTPException(409, "Job already running")
 
+    db = JobDB()
+    try:
+        row = db.conn.execute(
+            "SELECT * FROM jobs WHERE id=?", (job_id,)
+        ).fetchone()
+        if not row:
+            raise HTTPException(404, "Job not found")
+        row_dict = dict(row)
+        preset = row_dict.get("preset") or "affiliate"
+    finally:
+        db.close()
+
+    # cek DB DULU (404 sebelum hapus file), baru hapus file render lama
     removed = 0
     for pattern in (
         DATA_DIR / "clips_raw" / f"{job_id}_*_reframed.mp4",
@@ -578,14 +591,7 @@ async def re_render_job(job_id: str):
 
     db = JobDB()
     try:
-        row = db.conn.execute(
-            "SELECT * FROM jobs WHERE id=?", (job_id,)
-        ).fetchone()
-        if not row:
-            raise HTTPException(404, "Job not found")
         db.mark_job_status(job_id, "pending", failed_stage=None, error=None)
-        row_dict = dict(row)
-        preset = row_dict.get("preset") or "affiliate"
     finally:
         db.close()
 

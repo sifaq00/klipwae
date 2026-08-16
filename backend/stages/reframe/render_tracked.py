@@ -1,4 +1,4 @@
-﻿"""Render 9:16 dengan kamera halus mengikuti pembicara aktif (YOLO boxes).
+"""Render 9:16 dengan kamera halus mengikuti pembicara aktif (YOLO boxes).
 
 Loop frame per frame di Python → crop mengikuti box target (EMA smoothing) →
 pipe ke ffmpeg NVENC. Audio di-mux dari source. Gaya Opus Clip: pan halus

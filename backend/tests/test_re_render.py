@@ -29,6 +29,25 @@ def _make_job(tmp_path):
     (final / "rerendertest_000_x.jpg").write_bytes(b"j")
 
 
+def _cleanup():
+    """Bersihkan residue (DB row + file dummy) dari test."""
+    base = Path(__file__).parent.parent
+    try:
+        from db.jobs import JobDB
+        db = JobDB()
+        db.conn.execute("DELETE FROM jobs WHERE id='rerendertest'")
+        db.conn.commit()
+        db.close()
+    except Exception:
+        pass
+    for d in ("clips_raw", "clips_final"):
+        for p in (base / "data" / d).glob("rerendertest_*"):
+            try:
+                p.unlink()
+            except OSError:
+                pass
+
+
 def test_re_render_deletes_files_and_restarts(tmp_path, monkeypatch):
     _make_job(tmp_path)
     # patch runner agar tidak benar-benar men-download
@@ -52,6 +71,7 @@ def test_re_render_deletes_files_and_restarts(tmp_path, monkeypatch):
     assert not (base / "data/clips_raw/rerendertest_000_x_reframed.mp4").exists()
     assert not (base / "data/clips_final/rerendertest_000_x.mp4").exists()
     assert (base / "data/clips_raw/rerendertest_000_x.mp4").exists()
+    _cleanup()
     print("OK test_re_render_deletes_files_and_restarts")
 
 

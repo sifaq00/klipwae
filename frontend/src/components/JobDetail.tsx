@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { CaptionStyle, Job, Segment } from "../types";
-import { getJobCaptionStyle, getReburnStatus, getSegments, killJob, markSegment, rejectSegment, reburnCaptions, retryJob, saveJobCaptionStyle, streamLog } from "../lib/api";
+import { getJobCaptionStyle, getReburnStatus, getSegments, killJob, markSegment, reRenderJob, rejectSegment, reburnCaptions, retryJob, saveJobCaptionStyle, streamLog } from "../lib/api";
 import { formatCopyText } from "../lib/clipboard";
 import { fmtDuration, STAGES, STATUS_TO_STAGE, statusMeta, renderStageIcon } from "../lib/stages";
 import { useConfirm } from "./ConfirmDialog";
@@ -241,6 +241,12 @@ export function JobDetail({ job, onBack, onRefresh, onRejected, onDelete, videoR
     onRefresh();
   };
 
+  const handleReRender = async () => {
+    if (!(await confirm("Render ulang kamera? File reframed + subtitle lama dihapus, reframe + caption dijalankan ulang (klip/transkrip/analisis tetap dipakai)."))) return;
+    try { await reRenderJob(job.id); showToast("Render ulang dimulai"); } catch { /* ignore */ }
+    onRefresh();
+  };
+
   const handleReject = async (seg: Segment) => {
     if (!(await confirm(`Buang klip "${seg.product_mentioned || seg.topic || "tanpa label"}"? File akan dihapus.`))) return;
     try {
@@ -292,6 +298,15 @@ export function JobDetail({ job, onBack, onRefresh, onRejected, onDelete, videoR
           )}
           {job.status !== "done" && !job.running && (
             <button className="btn-ghost px-3 py-1.5 text-xs" onClick={handleRetry}>Lanjutkan</button>
+          )}
+          {job.status === "done" && !job.running && (
+            <button
+              className="btn-ghost px-3 py-1.5 text-xs"
+              onClick={handleReRender}
+              title="Hapus reframed + subtitle lama, jalankan ulang reframe & caption (clip/transkrip/analisis dipakai lagi)"
+            >
+              Render ulang kamera
+            </button>
           )}
           <button
             className="btn-ghost px-3 py-1.5 text-xs text-slate-500 hover:border-red-500/50 hover:text-red-400"

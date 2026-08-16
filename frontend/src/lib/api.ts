@@ -50,6 +50,10 @@ export async function retryJob(id: string): Promise<void> {
   await handle(await fetch(`${BASE}/jobs/${id}/retry`, { method: "POST" }));
 }
 
+export async function reRenderJob(id: string): Promise<void> {
+  await handle(await fetch(`${BASE}/jobs/${id}/re-render`, { method: "POST" }));
+}
+
 export async function getSegments(id: string): Promise<Segment[]> {
   return handle(await fetch(`${BASE}/jobs/${id}/segments`));
 }

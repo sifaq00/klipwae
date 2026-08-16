@@ -1,16 +1,24 @@
 import json
+import os
 import sqlite3
 from pathlib import Path
 from typing import Optional
 
-DB_PATH = Path("data/jobs.db")
+# KLIPWAE_DB_PATH: isolasi DB utk test (server live & pytest tak boleh
+# rebutan lock file yang sama). Dibaca LAZY tiap get_connection — test
+# yang ganti env di tengah suite harus dapat DB yang benar.
+
+
+def _db_path() -> Path:
+    return Path(os.environ.get("KLIPWAE_DB_PATH", "data/jobs.db"))
 
 
 def get_connection() -> sqlite3.Connection:
-    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+    db_path = _db_path()
+    db_path.parent.mkdir(parents=True, exist_ok=True)
     # check_same_thread=False: caption stage burn paralel (ThreadPoolExecutor)
     # memakai JobDB yang sama dari beberapa worker thread.
-    conn = sqlite3.connect(str(DB_PATH), timeout=30, check_same_thread=False)
+    conn = sqlite3.connect(str(db_path), timeout=30, check_same_thread=False)
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA busy_timeout=30000")
     conn.execute("PRAGMA foreign_keys=ON")

@@ -39,7 +39,11 @@ def nvenc_available() -> bool:
 
 
 def video_encode_args() -> list[str]:
+    # VBR dengan cap: -maxrate mencegah lonjakan bitrate (konten noisy bikin
+    # final 1.3x lebih besar dari input). TikTok 1080x1920 nyaman di ~6 Mbps.
     if nvenc_available():
-        return ["-c:v", "h264_nvenc", "-preset", "p5", "-cq", "23"]
+        return ["-c:v", "h264_nvenc", "-preset", "p5", "-cq", "23",
+                "-maxrate", "6M", "-bufsize", "12M"]
     # ponytail: fallback CPU kalau NVENC nggak ada
-    return ["-c:v", "libx264", "-preset", "fast", "-crf", "23"]
+    return ["-c:v", "libx264", "-preset", "fast", "-crf", "23",
+            "-maxrate", "6M", "-bufsize", "12M"]

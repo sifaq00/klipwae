@@ -555,6 +555,64 @@ async def retry_job(job_id: str):
     return {"job_id": job_id, "status": "restarted"}
 
 
+@app.post("/api/jobs/{job_id}/re-render")
+async def re_render_job(job_id: str):
+    """Render ulang reframe + caption: hapus _reframed & final (.mp4/.ass),
+    lalu retry pipeline. Clip/ingest/transcribe/analyze tetap di-skip (file ada)."""
+    if job_id in JOB_RUNNERS and JOB_RUNNERS[job_id].is_alive:
+        raise HTTPException(409, "Job already running")
+
+    db = JobDB()
+    try:
+        row = db.conn.execute(
+            "SELECT * FROM jobs WHERE id=?", (job_id,)
+        ).fetchone()
+        if not row:
+            raise HTTPException(404, "Job not found")
+        row_dict = dict(row)
+        preset = row_dict.get("preset") or "affiliate"
+    finally:
+        db.close()
+
+    # cek DB DULU (404 sebelum hapus file), baru hapus file render lama
+    removed = 0
+    for pattern in (
+        DATA_DIR / "clips_raw" / f"{job_id}_*_reframed.mp4",
+        DATA_DIR / "clips_final" / f"{job_id}_*.mp4",
+        DATA_DIR / "clips_final" / f"{job_id}_*.ass",
+        DATA_DIR / "clips_final" / f"{job_id}_*.jpg",
+    ):
+        for p in pattern.parent.glob(pattern.name):
+            try:
+                p.unlink()
+                removed += 1
+            except OSError:
+                pass
+
+    db = JobDB()
+    try:
+        db.mark_job_status(job_id, "pending", failed_stage=None, error=None)
+        # Reset bukti selesai: reframe is_complete cek stage_runs DONE
+        # (reframed file dihapus pasca-caption), caption is_complete cek
+        # caption_path. Tanpa reset, re-render bakal skip reframe/caption.
+        db.conn.execute(
+            "DELETE FROM stage_runs WHERE job_id=? AND stage IN ('reframe','caption')",
+            (job_id,),
+        )
+        db.conn.execute(
+            "UPDATE segments SET caption_path=NULL WHERE job_id=?",
+            (job_id,),
+        )
+        db.conn.commit()
+    finally:
+        db.close()
+
+    runner = JobRunner(job_id, row_dict["url"], preset=preset)
+    JOB_RUNNERS[job_id] = runner
+    runner.start()
+    return {"job_id": job_id, "status": "restarted", "files_removed": removed}
+
+
 @app.get("/api/jobs/{job_id}/log")
 async def stream_log(job_id: str, since: int = 0):
     runner = JOB_RUNNERS.get(job_id)

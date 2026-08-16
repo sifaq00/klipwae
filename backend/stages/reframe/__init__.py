@@ -1,4 +1,4 @@
-from pathlib import Path
+﻿from pathlib import Path
 
 import structlog
 from stages.base import Stage, StageResult, StageStatus
@@ -19,6 +19,15 @@ class ReframeStage(Stage):
         raw_clips = [c for c in raw_dir.glob(f"{job_id}_*.mp4") if "_reframed" not in c.name]
         if not raw_clips:
             return True
+        # Reframed DIHAPUS setelah caption sukses (hemat ~800MB/job) — jadi
+        # file TAK bisa jadi bukti. Cek stage_runs reframe DONE kalau db ada.
+        if db is not None:
+            row = db.conn.execute(
+                "SELECT COUNT(*) FROM stage_runs WHERE job_id=? AND stage='reframe' AND status='done'",
+                (job_id,),
+            ).fetchone()
+            if row and row[0] > 0:
+                return True
         return all(
             clip.with_name(clip.stem + "_reframed.mp4").exists()
             for clip in raw_clips
@@ -50,7 +59,7 @@ class ReframeStage(Stage):
                 reframed_count += 1
                 continue
 
-            # Deteksi PER KLIP — tiap segmen bisa beda setup kamera
+            # Deteksi PER KLIP â€” tiap segmen bisa beda setup kamera
             # (1 orang close-up vs 2+ orang face-to-face).
             layout = "single_shot"
             regions = None
@@ -79,7 +88,7 @@ class ReframeStage(Stage):
                         activity = map_speakers_to_sides(diar, activity)
                     camera_path = build_camera_path(activity, config.min_hold_sec)
                     # Jalur baru: YOLO track + kamera halus mengikuti pembicara.
-                    # Gagal → fallback render_split_screen (crop statis + zoom).
+                    # Gagal â†’ fallback render_split_screen (crop statis + zoom).
                     clip_no = f"{idx}/{total_clips}"
                     if not _render_tracked(clip, camera_path, reframed_path, fps, clip_no, config=config):
                         render_split_screen(clip, camera_path, regions, reframed_path)
@@ -93,7 +102,7 @@ class ReframeStage(Stage):
                 logger.warning("reframe_skip", clip=clip.name, error=str(e))
                 errors.append({"clip": clip.name, "error": str(e)})
 
-        # Layout per-klip bisa beda — simpan yang dominan ke DB untuk info UI
+        # Layout per-klip bisa beda â€” simpan yang dominan ke DB untuk info UI
         db.conn.execute(
             "UPDATE segments SET layout_type=? WHERE job_id=?",
             ("split_screen" if "split_screen" in layouts else "single_shot", job_id),
@@ -107,17 +116,13 @@ class ReframeStage(Stage):
 
 
 def _render_tracked(clip, camera_path, reframed_path, fps, clip_no: str = "", config=None) -> bool:
-    """Render kamera halus (YOLO track + EMA pan/zoom). False = gagal → fallback."""
+    """Render kamera halus (YOLO track + EMA pan/zoom). False = gagal â†’ fallback."""
     try:
         from stages.reframe.tracker import assign_zones, track_persons
         from stages.reframe.render_tracked import render_tracked
         cfg = {}
         if config is not None:
             cfg = {
-                "smooth_alpha": getattr(config, "reframe_smooth_alpha", 0.08),
-                "target_alpha": getattr(config, "reframe_target_alpha", 0.25),
-                "deadband": getattr(config, "reframe_deadband", 0.012),
-                "hold_sec": getattr(config, "reframe_hold_sec", 0.8),
                 "head_bias": getattr(config, "reframe_head_bias", 0.22),
                 "zoom_fit": getattr(config, "reframe_zoom_fit", 0.6),
                 "zoom_min": getattr(config, "reframe_zoom_min", 1.15),

@@ -173,17 +173,30 @@ def _fallback_queries(query: str, count: int = 3) -> list[str]:
     return frases or [query[:60]]
 
 
+_EXPAND_CACHE: dict[str, list[str]] = {}
+_EXPAND_CACHE_MAX = 256
+
+
 def expand_query(query: str, count: int = 4) -> list[str]:
     """Query → variasi pencarian via Gemini (retry 2x + jeda — rawan
     rate-limit kalau pipeline sedang jalan). Gagal → fallback frasa pendek
-    (bukan query utuh — yang panjang bikin yt-dlp 0 hasil)."""
+    (bukan query utuh — yang panjang bikin yt-dlp 0 hasil).
+
+    Cache per query: kuota free-tier 20 request/hari, query yang sama
+    dipakai ulang TIDAK boleh makan request Gemini baru."""
+    cached = _EXPAND_CACHE.get(query)
+    if cached:
+        return cached
     import time
-    for attempt in range(3):
+    for attempt in range(2):
         try:
             resp = _gemini_expand(query, count)
             qs = [q.strip() for q in resp.parsed.queries if q and q.strip()]
             if qs:
-                return qs[:count]
+                result = qs[:count]
+                if len(_EXPAND_CACHE) < _EXPAND_CACHE_MAX:
+                    _EXPAND_CACHE[query] = result
+                return result
         except Exception:
             pass
         time.sleep(1.0 * (attempt + 1))

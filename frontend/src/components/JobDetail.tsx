@@ -237,13 +237,23 @@ export function JobDetail({ job, onBack, onRefresh, onRejected, onDelete, videoR
 
   const handleRetry = async () => {
     if (!(await confirm("Proses ulang pipeline? Stage yang sudah selesai akan di-skip; file yang kurang di-repair."))) return;
-    try { await retryJob(job.id); showToast("Job dilanjutkan"); } catch { /* ignore */ }
+    try {
+      await retryJob(job.id);
+      showToast("Job dilanjutkan");
+    } catch (e) {
+      showToast(e instanceof Error ? `Gagal: ${e.message}` : "Gagal melanjutkan");
+    }
     onRefresh();
   };
 
   const handleReRender = async () => {
     if (!(await confirm("Render ulang kamera? File reframed + subtitle lama dihapus, reframe + caption dijalankan ulang (klip/transkrip/analisis tetap dipakai)."))) return;
-    try { await reRenderJob(job.id); showToast("Render ulang dimulai"); } catch { /* ignore */ }
+    try {
+      await reRenderJob(job.id);
+      showToast("Render ulang dimulai");
+    } catch (e) {
+      showToast(e instanceof Error ? `Gagal: ${e.message}` : "Gagal render ulang");
+    }
     onRefresh();
   };
 

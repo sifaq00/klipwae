@@ -433,6 +433,20 @@ class CaptionStage(Stage):
                 metadata={"clips_captioned": clips_captioned, "errors": len(errors)},
             )
 
+        # Reframed = perantara yang sudah ter-burn ke final. Hapus → hemat
+        # ~800MB/job. is_complete reframe TIDAK lagi cek file (pakai
+        # stage_runs DONE), re-render membuatnya ulang dari raw clip.
+        removed_reframed = 0
+        raw_dir = Path("data/clips_raw")
+        for p in raw_dir.glob(f"{job_id}_*_reframed.mp4"):
+            try:
+                p.unlink()
+                removed_reframed += 1
+            except OSError:
+                pass
+        if removed_reframed:
+            print(f"    caption cleanup: {removed_reframed} reframed dihapus")
+
         return StageResult(
             status=StageStatus.DONE,
             metadata={"clips_captioned": clips_captioned, "errors": len(errors)},

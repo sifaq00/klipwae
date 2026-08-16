@@ -1,4 +1,4 @@
-from pydantic import model_validator
+﻿from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -23,10 +23,6 @@ class Settings(BaseSettings):
     reframe_zoom_max: float = 2.0
     reframe_zoom_fit: float = 0.6
     reframe_head_bias: float = 0.22
-    reframe_smooth_alpha: float = 0.08
-    reframe_target_alpha: float = 0.25
-    reframe_deadband: float = 0.012
-    reframe_hold_sec: float = 0.8
     reframe_zoom_idle: float = 1.05
     reframe_zoom_ease: float = 0.04
     reframe_zoom_deadband: float = 0.05

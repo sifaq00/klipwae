@@ -592,6 +592,18 @@ async def re_render_job(job_id: str):
     db = JobDB()
     try:
         db.mark_job_status(job_id, "pending", failed_stage=None, error=None)
+        # Reset bukti selesai: reframe is_complete cek stage_runs DONE
+        # (reframed file dihapus pasca-caption), caption is_complete cek
+        # caption_path. Tanpa reset, re-render bakal skip reframe/caption.
+        db.conn.execute(
+            "DELETE FROM stage_runs WHERE job_id=? AND stage IN ('reframe','caption')",
+            (job_id,),
+        )
+        db.conn.execute(
+            "UPDATE segments SET caption_path=NULL WHERE job_id=?",
+            (job_id,),
+        )
+        db.conn.commit()
     finally:
         db.close()
 

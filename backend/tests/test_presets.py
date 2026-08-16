@@ -59,7 +59,7 @@ def test_db_preset_column_default(tmp_path):
 def test_db_create_and_get_job_presets(tmp_path, monkeypatch):
     """create_job dan get_job menyimpan dan mengembalikan preset dengan benar."""
     import db.jobs as jobs_mod
-    monkeypatch.setattr(jobs_mod, "DB_PATH", tmp_path / "jobs.db")
+    monkeypatch.setenv("KLIPWAE_DB_PATH", str(tmp_path / "jobs.db"))
     init_db()
     db = JobDB()
 

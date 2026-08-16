@@ -25,7 +25,6 @@ def test_default_params_preserved():
     assert sig.parameters["zoom_min"].default == 1.15
     assert sig.parameters["zoom_max"].default == 2.0
     assert sig.parameters["zoom_fit"].default == 0.6
-    assert sig.parameters["hold_sec"].default == 0.8
     assert sig.parameters["zoom_ease"].default == 0.04
     assert sig.parameters["zoom_deadband"].default == 0.05
     assert sig.parameters["min_headroom_ratio"].default == 0.12

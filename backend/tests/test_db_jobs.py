@@ -238,7 +238,8 @@ def test_insert_and_get_segments_with_hook_and_affiliate():
     print("OK test_insert_and_get_segments_with_hook_and_affiliate")
 
 
-def test_ensure_columns_migration():
+def test_ensure_columns_migration(tmp_path, monkeypatch):
+    monkeypatch.setenv("KLIPWAE_DB_PATH", str(tmp_path / "migrate.db"))
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
         os.chdir(tmp)
         # Create legacy table without new columns

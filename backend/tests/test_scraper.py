@@ -1,4 +1,4 @@
-"""Scraper tests — parser + endpoint (yt-dlp di-mock, tanpa network)."""
+﻿"""Scraper tests â€” parser + endpoint (yt-dlp di-mock, tanpa network)."""
 import sys
 from pathlib import Path
 from unittest.mock import patch
@@ -98,7 +98,7 @@ def test_score_item_ranks_title_over_description():
 
 
 def test_expand_query_uses_gemini_and_falls_back():
-    # fallback: gemini gagal → frasa pendek ber-prefix podcast (kontekstual)
+    # fallback: gemini gagal â†’ frasa pendek ber-prefix podcast (kontekstual)
     with patch("utils.scraper._gemini_expand", side_effect=RuntimeError("no key")):
         qs = expand_query("podcast skincare sponsor")
     assert "podcast skincare sponsor" in qs, f"fallback: {qs}"
@@ -112,7 +112,7 @@ def test_expand_query_uses_gemini_and_falls_back():
 
 
 def test_fallback_queries_splits_long_query():
-    """Gemini mati + query kalimat panjang → yt-dlp 0 hasil. Fallback harus
+    """Gemini mati + query kalimat panjang â†’ yt-dlp 0 hasil. Fallback harus
     pecah jadi frasa pendek yang bisa dicari, bukan query utuh."""
     from utils.scraper import _fallback_queries
     q = ("podcast indonesia seperti podcastnya radityadika, kasisolusi, pwk dll, "
@@ -126,7 +126,7 @@ def test_fallback_queries_splits_long_query():
 
 
 def test_scrape_multi_uses_fallback_when_gemini_down():
-    """Gemini down → fallback frasa pendek tetap kasih hasil."""
+    """Gemini down â†’ fallback frasa pendek tetap kasih hasil."""
     fake = type("R", (), {"returncode": 0, "stdout": "x|T|C|100|d\n", "stderr": ""})()
 
     def fake_run(args, **kw):
@@ -166,7 +166,48 @@ def test_scrape_multi_merges_dedupes_scores_and_caps():
     assert items[0]["score"] > items[1]["score"], items
 
 
-def test_scrape_multi_respects_cap():
+def test_expand_query_caches_identical_queries():
+    """Query sama â†’ Gemini dipanggil SEKALI (cache) â€” kuota free-tier
+    20/hari, tiap pencarian ulang tak boleh makan request baru."""
+    import utils.scraper as scraper
+    calls = {"n": 0}
+
+    class FakeResp:
+        parsed = type("P", (), {"queries": ["q1", "q2", "q3"]})()
+
+    def fake_expand(query, count=4):
+        calls["n"] += 1
+        return FakeResp()
+
+    scraper._EXPAND_CACHE.clear()
+    orig = scraper._gemini_expand
+    scraper._gemini_expand = fake_expand
+    try:
+        a = scraper.expand_query("podcast skincare sponsor")
+        b = scraper.expand_query("podcast skincare sponsor")
+        assert a == b == ["q1", "q2", "q3"]
+    finally:
+        scraper._gemini_expand = orig
+        scraper._EXPAND_CACHE.clear()
+    assert calls["n"] == 1, f"Gemini harus 1x utk query sama, got {calls['n']}"
+
+
+def test_expand_query_cache_misses_on_different_query():
+    import utils.scraper as scraper
+
+    class FakeResp:
+        parsed = type("P", (), {"queries": ["q1"]})()
+
+    orig = scraper._gemini_expand
+    scraper._gemini_expand = lambda query, count=4: FakeResp()
+    scraper._EXPAND_CACHE.clear()
+    try:
+        scraper.expand_query("query satu")
+        scraper.expand_query("query dua")
+        assert len(scraper._EXPAND_CACHE) == 2
+    finally:
+        scraper._gemini_expand = orig
+        scraper._EXPAND_CACHE.clear()
     fake = type("R", (), {"returncode": 0, "stdout": "x|T|C|100|d\n", "stderr": ""})()
     with patch("utils.scraper.subprocess.run", lambda *a, **k: fake), \
          patch("utils.scraper.expand_query", return_value=["q"]):

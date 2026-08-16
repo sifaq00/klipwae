@@ -107,7 +107,6 @@ def render_tracked(
     target_w: int = 1080,
     target_h: int = 1920,
     clip_no: str = "",
-    hold_sec: float = 0.8,
     head_bias: float = 0.22,
     zoom_fit: float = 0.6,
     zoom_min: float = 1.15,
@@ -146,8 +145,6 @@ def render_tracked(
     cx, cy = w / 2, h / 2
     zoom = zoom_idle
     active_target_zoom = zoom_idle
-    hold_left = 0
-    hold_frames = int(hold_sec * fps)
     # MODE SNAP-FIXED-ZOOM: kamera terkunci di anchor zona (median posisi
     # orang), switch side → SNAP instan (bukan glide). Gerak orang TIDAK
     # diikuti (no-pan) — hanya zoom in/out dari ukuran box.
@@ -232,12 +229,9 @@ def render_tracked(
                 raw_zoom = max(zoom_min, min(zoom_max, (h * zoom_fit) / box_h))
                 active_target_zoom = _update_target_zoom(raw_zoom, active_target_zoom, zoom_deadband)
                 target_zoom = active_target_zoom
-                hold_left = hold_frames
             else:
                 # Track hilang sesaat → TAHAN di anchor (no-pan), zoom balik
                 # idle. Jangan drift ke center — mode ini kamera tak bergerak.
-                if hold_left > 0:
-                    hold_left -= 1
                 active_target_zoom = _update_target_zoom(zoom_idle, active_target_zoom, zoom_deadband)
                 target_zoom = active_target_zoom
         else:

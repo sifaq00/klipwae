@@ -70,8 +70,12 @@ FONT_NAME_MAP = {
     "Trebuchet MS": "Poppins ExtraBold",
     "Verdana-Bold": "Roboto",
     "Verdana Bold": "Roboto",
-    "Bebas Neue": "BebasNeue-Regular",
-    "Lato": "Lato-Regular",
+    "Bebas Neue": "Bebas Neue",     # family name di dalam TTF (bukan nama file)
+    "BebasNeue-Regular": "Bebas Neue",
+    "Lato": "Lato",
+    "Lato-Regular": "Lato",
+    "Lato-Bold": "Lato",
+    "Lato-Black": "Lato",
 }
 
 

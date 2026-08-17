@@ -55,7 +55,9 @@ def _split_emoji_runs(text: str) -> list[tuple[bool, str]]:
 def _ass_word(text: str, open_tag: str, close_tag: str = "") -> str:
     """Wrap SATU kata dgn open/close tag ASS; emoji di dalamnya di-render
     natural: {\r\bord0\shad0} (reset style + tanpa outline/shadow) lalu
-    tag di-restore. Emoji bitmap (Segoe UI Emoji/COLR) tampil warna asli."""
+    tag di-restore. CATATAN: libass 0.17.4 TIDAK support COLR/bitmap color
+    (libass#381) — emoji dirender MONOKROM dengan warna primary style.
+    Reset tags hanya menghilangkan outline/shadow, bukan memberi warna."""
     parts = []
     for is_emoji, chunk in _split_emoji_runs(text):
         if is_emoji:

@@ -139,6 +139,77 @@ const PRESETS: Preset[] = [
       style: "static",
     },
   },
+  {
+    name: "Opus Karaoke",
+    style: {
+      font: "Montserrat Black",
+      size: 100,
+      bold: true,
+      uppercase: true,
+      pop: true,
+      bounce: false,
+      text_color: "#FFFFFF",
+      highlight_color: "#00FF66",
+      outline: 7,
+      outline_color: "#000000",
+      shadow: 3,
+      margin_v: 240,
+      style: "highlight",
+    },
+  },
+  {
+    name: "Opus White Box",
+    style: {
+      font: "Poppins Bold",
+      size: 84,
+      bold: true,
+      uppercase: true,
+      pop: false,
+      bounce: false,
+      text_color: "#FFFFFF",
+      highlight_color: "#00FF66",
+      border_style: "box",
+      outline: 5,
+      shadow: 2,
+      margin_v: 180,
+      style: "highlight",
+    },
+  },
+  {
+    name: "Opus Pink",
+    style: {
+      font: "Anton",
+      size: 104,
+      bold: true,
+      uppercase: true,
+      pop: true,
+      bounce: false,
+      text_color: "#FF2EC4",
+      highlight_color: "#FFFFFF",
+      outline: 5,
+      outline_color: "#000000",
+      shadow: 3,
+      margin_v: 240,
+      style: "highlight",
+    },
+  },
+  {
+    name: "Opus Green Pop",
+    style: {
+      font: "Poppins ExtraBold",
+      size: 96,
+      bold: true,
+      uppercase: true,
+      pop: true,
+      bounce: false,
+      text_color: "#FFFFFF",
+      highlight_color: "#00E5FF",
+      outline: 7,
+      shadow: 3,
+      margin_v: 240,
+      style: "highlight",
+    },
+  },
 ];
 
 function getTagBadgeStyle(tag: string, active: boolean) {
@@ -167,6 +238,11 @@ function getTagBadgeStyle(tag: string, active: boolean) {
     return active
       ? "bg-teal-500/25 text-teal-300 border-teal-400/60"
       : "bg-teal-500/15 text-teal-400 border-teal-500/30";
+  }
+  if (t.includes("opus")) {
+    return active
+      ? "bg-cyan-500/25 text-cyan-300 border-cyan-400/60"
+      : "bg-cyan-500/15 text-cyan-400 border-cyan-500/30";
   }
   return active
     ? "bg-emerald-500/25 text-emerald-300 border-emerald-400/60"

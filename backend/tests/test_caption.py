@@ -15,7 +15,32 @@ from stages.caption import (
     generate_ass,
     CaptionStage,
     _clip_window,
+    _ass_word,
+    _split_emoji_runs,
 )
+
+
+def test_emoji_runs_split():
+    """Emoji terdeteksi terpisah dari teks — kata campur 'haha😂oke' → 3 run."""
+    runs = _split_emoji_runs("haha😂oke")
+    assert runs == [(False, "haha"), (True, "😂"), (False, "oke")], runs
+    assert _split_emoji_runs("polos") == [(False, "polos")]
+    # ZWJ sequence (keluarga 👨👩👧) — 2+ emoji + ZWJ
+    family = _split_emoji_runs("👨👩👧")
+    assert any(is_emoji for is_emoji, _ in family)
+
+
+def test_ass_word_wraps_emoji_natural():
+    """Emoji dibungkus {\r\bord0\shad0} — TANPA \c/outline subtitle;
+    teks di sekitarnya tetap kena tag style."""
+    out = _ass_word("serum 😂 bagus", "{\\c&H00FF00}")
+    # emoji natural
+    assert "{\\r\\bord0\\shad0}😂{\\r{\\c&H00FF00}" in out, out
+    # teks non-emoji kena style
+    assert out.startswith("{\\c&H00FF00}serum "), out
+    # teks polos tanpa emoji: tidak ada reset tag
+    plain = _ass_word("serum", "{\\c&H00FF00}")
+    assert "bord0" not in plain
 
 
 def test_clip_window_uses_actual_offsets():
@@ -209,9 +234,11 @@ def test_generate_ass_auto_emoji():
         {"text": "mantap", "start": 1.0, "end": 1.5},
     ]
     ass_emoji = generate_ass(words, style="highlight", style_cfg=_cfg(auto_emoji=True))
-    assert "glowing ✨" in ass_emoji
-    assert "mantap ✨" in ass_emoji
-    assert "wajah 🧴" in ass_emoji
+    # emoji ada + dibungkus natural ({\r\bord0\shad0}) — bukan kena style
+    assert "✨" in ass_emoji
+    assert "🧴" in ass_emoji
+    assert "\\bord0\\shad0}✨" in ass_emoji, "emoji harus natural (tanpa outline)"
+    assert "\\bord0\\shad0}🧴" in ass_emoji
 
     ass_no_emoji = generate_ass(words, style="highlight", style_cfg=_cfg(auto_emoji=False))
     assert "✨" not in ass_no_emoji

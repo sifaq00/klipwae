@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
@@ -19,6 +20,43 @@ CLIP_BUFFER_SEC = 1.5  # sama dengan clip.py — kata di ambang segmen ikut ke-s
 def _sanitize_ass_text(text: str) -> str:
     """Escape karakter special ASS: { } \\ harus di-escape."""
     return text.replace("\\", "\\\\").replace("{", "\\{").replace("}", "\\}")
+
+
+_EMOJI_RE = re.compile(
+    "[\U0001F000-\U0001FAFF\u2600-\u27BF\u2B00-\u2BFF\uFE0F\u200D\u00A9\u00AE\u2122]"
+)
+
+
+def _split_emoji_runs(text: str) -> list[tuple[bool, str]]:
+    """Pecah teks jadi run (is_emoji, chunk). Emoji dirender NATURAL —
+    tak boleh kena {\c} / outline / shadow subtitle (masalah: emoji putih
+    kebungkus style)."""
+    out = []
+    last = 0
+    for m in _EMOJI_RE.finditer(text):
+        if m.start() > last:
+            out.append((False, text[last:m.start()]))
+        out.append((True, m.group(0)))
+        last = m.end()
+    if last < len(text):
+        out.append((False, text[last:]))
+    if not out:
+        out.append((False, text))
+    return out
+
+
+def _ass_word(text: str, open_tag: str, close_tag: str = "") -> str:
+    """Wrap SATU kata dgn open/close tag ASS; emoji di dalamnya di-render
+    natural: {\r\bord0\shad0} (reset style + tanpa outline/shadow) lalu
+    tag di-restore. Emoji bitmap (Segoe UI Emoji/COLR) tampil warna asli."""
+    parts = []
+    for is_emoji, chunk in _split_emoji_runs(text):
+        if is_emoji:
+            parts.append("{\\r\\bord0\\shad0}" + chunk + "{\\r" + open_tag + "}")
+        else:
+            parts.append(open_tag + chunk)
+    parts.append(close_tag)
+    return "".join(parts)
 
 
 def _sec_to_ass_time(sec: float) -> str:
@@ -174,9 +212,15 @@ def generate_ass(words: list[dict], style: str = "highlight",
                     for word in line_words:
                         w_safe = _sanitize_ass_text(word)
                         if wi == i:
-                            line_parts.append(bounce_tag + "{\\c&H" + hl + active_scale + "}" + w_safe + "{\\c&H" + txt + "}")
+                            line_parts.append(
+                                _ass_word(
+                                    w_safe,
+                                    bounce_tag + "{\\c&H" + hl + active_scale + "}",
+                                    "{\\c&H" + txt + "}",
+                                )
+                            )
                         else:
-                            line_parts.append(w_safe)
+                            line_parts.append(_ass_word(w_safe, ""))
                         wi += 1
                     parts.append(" ".join(line_parts))
                 lines.append(
@@ -189,12 +233,12 @@ def generate_ass(words: list[dict], style: str = "highlight",
         for sent in sentences:
             start = sent[0]["start"]
             end = sent[-1]["end"]
-            # Sanitize per kata DULU ? line_sep berisi tag \N/{\fs} yang
+            # Sanitize per kata DULU — line_sep berisi tag \N/{\fs} yang
             # jangan ikut di-escape.
             wrapped = _wrap([_sanitize_ass_text(_text(w)) for w in sent], wrap_max_chars)
             lines.append(
                 f"Dialogue: 0,{_sec_to_ass_time(start)},{_sec_to_ass_time(end)},"
-                f"Default,,0,0,0,,{line_sep.join([' '.join(line) for line in wrapped])}"
+                f"Default,,0,0,0,,{line_sep.join([' '.join(_ass_word(wt, '') for wt in line) for line in wrapped])}"
             )
 
     return "\n".join(lines) + "\n"

@@ -524,17 +524,26 @@ async def delete_job(job_id: str):
 
 @app.post("/api/jobs/{job_id}/kill")
 async def kill_job(job_id: str):
+    # Route: pipeline runner dulu, kalau tak ada → reburn (I2: sebelumnya
+    # reburn tak bisa di-stop sama sekali — UI tak punya tombol, delete job
+    # satu-satunya jalan).
     runner = JOB_RUNNERS.get(job_id)
-    if not runner:
-        raise HTTPException(404, "Job tidak sedang jalan")
-    runner.kill()
-    return {"status": "kill_requested"}
+    if runner:
+        runner.kill()
+        return {"status": "kill_requested"}
+    reburn = _REBURN.get(job_id)
+    if reburn and reburn.is_alive():
+        runtime.kill_job(job_id, reburn.ident)
+        return {"status": "kill_requested"}
+    raise HTTPException(404, "Job tidak sedang jalan")
 
 
 @app.post("/api/jobs/{job_id}/retry")
 async def retry_job(job_id: str):
     if job_id in JOB_RUNNERS and JOB_RUNNERS[job_id].is_alive:
         raise HTTPException(409, "Job already running")
+    if job_id in _REBURN and _REBURN[job_id].is_alive():
+        raise HTTPException(409, "Reburn sedang berjalan")
 
     db = JobDB()
     try:
@@ -561,6 +570,8 @@ async def re_render_job(job_id: str):
     lalu retry pipeline. Clip/ingest/transcribe/analyze tetap di-skip (file ada)."""
     if job_id in JOB_RUNNERS and JOB_RUNNERS[job_id].is_alive:
         raise HTTPException(409, "Job already running")
+    if job_id in _REBURN and _REBURN[job_id].is_alive():
+        raise HTTPException(409, "Reburn sedang berjalan")
 
     db = JobDB()
     try:
@@ -987,8 +998,14 @@ async def reburn_captions(job_id: str):
     """Regenerate subtitle dengan style terbaru + burn ulang semua klip final."""
     import json as _json
 
-    if job_id in _REBURN and _REBURN[job_id].is_alive():
-        raise HTTPException(409, "Reburn sudah berjalan untuk episode ini")
+    # C1: cek KEDUA registry — pipeline runner hidup ATAU reburn berjalan
+    # → 409. Tanpa cek JOB_RUNNERS, reburn saat pipeline mid-reframe/caption
+    # menulis file yang sama (korup) + clear_job melepas ikatan ffmpeg runner
+    # (kill runner tak bisa terminate procs → zombie encode).
+    runner_alive = job_id in JOB_RUNNERS and JOB_RUNNERS[job_id].is_alive
+    reburn_alive = job_id in _REBURN and _REBURN[job_id].is_alive()
+    if runner_alive or reburn_alive:
+        raise HTTPException(409, "Job sedang berjalan")
 
     def _do():
         from config import Settings
@@ -998,11 +1015,19 @@ async def reburn_captions(job_id: str):
             # Reframed DIHAPUS setelah caption sukses (hemat storage) — kalau
             # hilang, re-burn bakal pakai RAW clip landscape. Reframe ulang
             # dulu (stage skip file yang masih ada, cuma render yang hilang).
+            reframe_ok = True
             try:
                 from stages.reframe import ReframeStage
-                ReframeStage().run(job_id, db, Settings())
+                rr = ReframeStage().run(job_id, db, Settings())
+                if rr.status != StageStatus.DONE or rr.metadata.get("errors"):
+                    # Reframe gagal/parsial → burn bakal pakai RAW landscape
+                    # SILENT. Gagalkan reburn, jangan kasih toast sukses.
+                    reframe_ok = False
             except Exception:
                 logger.warning("reburn_reframe_failed", job_id=job_id, exc_info=True)
+                reframe_ok = False
+            if not reframe_ok:
+                raise RuntimeError("reframe gagal — file reframed tidak lengkap")
             # Hapus final + thumbnail dulu supaya stage benar-benar re-burn dan
             # thumbnail di-generate ulang dengan gaya baru (bukan yang basi).
             final_dir = DATA_DIR / "clips_final"
@@ -1049,6 +1074,10 @@ async def reburn_captions(job_id: str):
             _REBURN_STATUS[job_id] = "failed"
         finally:
             runtime.clear_job(job_id)
+            # I3: unregister ident — tanpa ini tiap reburn me-leak _stops[ident];
+            # ident thread di-reuse CPython → ThreadPoolExecutor worker pipeline
+            # berikutnya kena stop event stale → caption mati misterius "Killed".
+            runtime.unregister(threading.get_ident())
             # JANGAN pop di sini: delete_job butuh ref thread utk join/kill
             # selama masih hidup. Entry mati di-replace saat reburn berikutnya.
 

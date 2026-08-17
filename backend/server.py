@@ -997,18 +997,26 @@ async def reburn_captions(job_id: str):
     def _do():
         from config import Settings
         from stages.caption import CaptionStage
-        # Hapus final + thumbnail dulu supaya stage benar-benar re-burn dan
-        # thumbnail di-generate ulang dengan gaya baru (bukan yang basi).
-        final_dir = DATA_DIR / "clips_final"
-        for p in list(final_dir.glob(f"{job_id}_*")):
-            if p.name == "_style_preview.png":
-                continue
-            try:
-                p.unlink()
-            except OSError:
-                pass
         db = JobDB()
         try:
+            # Reframed DIHAPUS setelah caption sukses (hemat storage) — kalau
+            # hilang, re-burn bakal pakai RAW clip landscape. Reframe ulang
+            # dulu (stage skip file yang masih ada, cuma render yang hilang).
+            try:
+                from stages.reframe import ReframeStage
+                ReframeStage().run(job_id, db, Settings())
+            except Exception:
+                logger.warning("reburn_reframe_failed", job_id=job_id, exc_info=True)
+            # Hapus final + thumbnail dulu supaya stage benar-benar re-burn dan
+            # thumbnail di-generate ulang dengan gaya baru (bukan yang basi).
+            final_dir = DATA_DIR / "clips_final"
+            for p in list(final_dir.glob(f"{job_id}_*")):
+                if p.name == "_style_preview.png":
+                    continue
+                try:
+                    p.unlink()
+                except OSError:
+                    pass
             return CaptionStage().run(job_id, db, Settings())
         finally:
             db.close()

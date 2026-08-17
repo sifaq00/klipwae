@@ -116,6 +116,33 @@ def test_e2e_clip_and_caption_chain():
                 (JOB,))
             db.conn.commit()
             assert ReframeStage().is_complete(JOB, db), "is_complete harus TRUE via stage_runs"
+
+            # 5) RE-BURN: reframed sudah dihapus → reframe ulang dulu (fallback
+            #    center-crop, tanpa GPU) → hapus final lama (mimik server
+            #    reburn _do) → burn → final tetap 9:16, BUKAN landscape
+            #    (regresi: re-burn pakai raw clip).
+            ReframeStage().run(JOB, db, config)
+            reframed2 = list((_DATA / "clips_raw").glob(f"{JOB}_*_reframed.mp4"))
+            assert len(reframed2) == 1, f"reframed harus dibuat ulang: {reframed2}"
+            for p in (_DATA / "clips_final").glob(f"{JOB}_*"):
+                try:
+                    p.unlink()
+                except OSError:
+                    pass
+            r3 = CaptionStage().run(JOB, db, config)
+            assert r3.status == StageStatus.DONE, r3.error
+            finals2 = list((_DATA / "clips_final").glob(f"{JOB}_*.mp4"))
+            assert len(finals2) == 1
+            import subprocess as sp
+            probe = sp.run(
+                ["ffprobe", "-v", "error", "-select_streams", "v:0",
+                 "-show_entries", "stream=width,height", "-of", "csv=p=0",
+                 str(finals2[0])],
+                capture_output=True, text=True, check=True, timeout=30,
+            )
+            w, h = probe.stdout.strip().split(",")
+            ar = int(w) / int(h)
+            assert abs(ar - 9 / 16) < 0.05, f"final harus 9:16, got {w}x{h} ({ar:.3f})"
         finally:
             runtime.unregister(threading.get_ident())
             db.close()

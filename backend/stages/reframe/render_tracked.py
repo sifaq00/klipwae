@@ -167,6 +167,25 @@ def render_tracked(
     cur_seg_idx: int | None = None
     idx = 0
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+
+    # PRE-SNAP ke anchor segmen PERTAMA sebelum loop: YOLO butuh beberapa
+    # frame sebelum box pertama muncul — tanpa ini kamera mulai di center
+    # frame lalu "lompat" ke anchor saat box muncul (glitch ~1 detik awal).
+    if has_path and camera_path:
+        first_side = camera_path[0][2]
+        first_zone = next((z for z, n in zone_names.items() if n == first_side), None)
+        if first_zone is not None:
+            a = seg_anchors.get((first_zone, 0))
+            if a:
+                cx, cy = a
+                cur_seg_idx = 0
+                prev_side = first_side
+    else:
+        za = zone_anchors.get(0)
+        if za:
+            cx, cy = za
+            prev_side = "locked"
+
     while True:
         ret, frame = cap.read()
         if not ret:

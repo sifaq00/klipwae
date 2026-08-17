@@ -43,9 +43,19 @@ def test_emoji_runs_split():
     runs = _split_emoji_runs("haha😂oke")
     assert runs == [(False, "haha"), (True, "😂"), (False, "oke")], runs
     assert _split_emoji_runs("polos") == [(False, "polos")]
-    # ZWJ sequence (keluarga 👨👩👧) — 2+ emoji + ZWJ
+    # ZWJ sequence (keluarga 👨👩👧) — SATU run, tidak boleh kepecah
     family = _split_emoji_runs("👨👩👧")
-    assert any(is_emoji for is_emoji, _ in family)
+    assert len(family) == 1 and family[0][0], family
+    assert family[0][1] == "👨👩👧", family
+    # skin-tone modifier 👍🏽 — satu run
+    tone = _split_emoji_runs("👍🏽")
+    assert len(tone) == 1 and tone[0][1] == "👍🏽", tone
+    # variation selector ❤️ — satu run
+    vs = _split_emoji_runs("❤️")
+    assert len(vs) == 1 and vs[0][1] == "❤️", vs
+    # emoji + teks + emoji: tiga run
+    mixed = _split_emoji_runs("a👨👩👧b")
+    assert mixed == [(False, "a"), (True, "👨👩👧"), (False, "b")], mixed
 
 
 def test_ass_word_wraps_emoji_natural():

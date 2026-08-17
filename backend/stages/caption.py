@@ -30,13 +30,20 @@ _EMOJI_RE = re.compile(
 def _split_emoji_runs(text: str) -> list[tuple[bool, str]]:
     """Pecah teks jadi run (is_emoji, chunk). Emoji dirender NATURAL —
     tak boleh kena {\c} / outline / shadow subtitle (masalah: emoji putih
-    kebungkus style)."""
+    kebungkus style).
+
+    Run emoji BERDEKATAN digabung — ZWJ sequence (👨👩👧), skin-tone
+    modifier (👍🏽), variation selector (❤️) HARUS satu run: kalau
+    dipecah, tag {\r...}{\r{tag}} di antaranya memutus shaping grapheme."""
     out = []
     last = 0
     for m in _EMOJI_RE.finditer(text):
         if m.start() > last:
             out.append((False, text[last:m.start()]))
-        out.append((True, m.group(0)))
+        if out and out[-1][0]:
+            out[-1] = (True, out[-1][1] + m.group(0))
+        else:
+            out.append((True, m.group(0)))
         last = m.end()
     if last < len(text):
         out.append((False, text[last:]))

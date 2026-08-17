@@ -1,4 +1,4 @@
-﻿from pydantic import model_validator
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 

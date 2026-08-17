@@ -1,4 +1,4 @@
-﻿"""Scraper tests â€” parser + endpoint (yt-dlp di-mock, tanpa network)."""
+"""Scraper tests â€” parser + endpoint (yt-dlp di-mock, tanpa network)."""
 import sys
 from pathlib import Path
 from unittest.mock import patch
@@ -208,6 +208,9 @@ def test_expand_query_cache_misses_on_different_query():
     finally:
         scraper._gemini_expand = orig
         scraper._EXPAND_CACHE.clear()
+
+
+def test_scrape_multi_respects_cap():
     fake = type("R", (), {"returncode": 0, "stdout": "x|T|C|100|d\n", "stderr": ""})()
     with patch("utils.scraper.subprocess.run", lambda *a, **k: fake), \
          patch("utils.scraper.expand_query", return_value=["q"]):

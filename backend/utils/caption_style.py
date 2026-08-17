@@ -10,7 +10,8 @@ GLOBAL_STYLE_PATH = DATA_DIR / "caption_style.json"
 
 DEFAULT_STYLE: dict = {
     "enabled": True,
-    "font": "Segoe UI",
+    "font": "Montserrat Black",  # OFL, ada di bundle fonts/ — Segoe UI (MS)
+    # tak dibundle → libass fallback font acak → subtitle "jelek" + beda preview.
     "size": 96,
     "bold": True,
     "italic": False,
@@ -60,6 +61,8 @@ FONT_NAME_MAP = {
     "Montserrat Black": "Montserrat Black",
     "Segoe-UI-Black": "Poppins Bold",  # font MS proprietary → ganti OFL
     "Segoe UI Black": "Poppins Bold",
+    "Segoe UI": "Poppins Bold",        # font MS sistem (tak dibundle) → OFL
+    "SegoeUI": "Poppins Bold",
     "Impact": "Anton",
     "Arial-Black": "Archivo Black",
     "Arial Black": "Archivo Black",
@@ -67,6 +70,8 @@ FONT_NAME_MAP = {
     "Trebuchet MS": "Poppins ExtraBold",
     "Verdana-Bold": "Roboto",
     "Verdana Bold": "Roboto",
+    "Bebas Neue": "BebasNeue-Regular",
+    "Lato": "Lato-Regular",
 }
 
 

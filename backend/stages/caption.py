@@ -244,6 +244,23 @@ def generate_ass(words: list[dict], style: str = "highlight",
     return "\n".join(lines) + "\n"
 
 
+def subtitle_filter_args(ass_path: Path, backend_dir: Path) -> str:
+    """Filter subtitles + fontsdir — SATU SUMBER KEBENARAN utk preview &
+    burn. Keduanya harus identik (font/posisi/wrap sama → hasil klip ==
+    preview 100%). backend_dir WAJIB absolut: kalau relatif ke CWD, preview
+    bisa pakai font dir berbeda dari burn."""
+    fonts_dir = max(
+        (d for d in (backend_dir / "assets" / "fonts", backend_dir / "fonts")
+         if d.exists() and any(d.iterdir())),
+        key=lambda d: sum(1 for _ in d.glob("*.ttf")),
+        default=None,
+    )
+    fonts_opt = ""
+    if fonts_dir is not None:
+        fonts_opt = f":fontsdir={fonts_dir.relative_to(backend_dir).as_posix()}"
+    return f"subtitles={ass_path.relative_to(backend_dir).as_posix()}{fonts_opt}"
+
+
 def _make_thumb(final_path: Path):
     """Thumbnail poster 1 frame buat kartu review UI — hindari UI load video
     penuh (10+ video sekaligus bikin backend pegang handle file terus)."""
@@ -409,28 +426,14 @@ class CaptionStage(Stage):
                 # Path RELATIF ke backend + cwd: menghindari escape colon
                 # (D\:) yang rusak di filter subtitles, dan wajib dipakai
                 # biar fontsdir (font bundle) ikut ke-resolve.
+                # subtitle_filter_args = SATU sumber dgn preview (server.py).
                 backend_dir = Path(__file__).parent.parent
                 source_abs = source if source.is_absolute() else backend_dir / source
 
-                fonts_opt = ""
-                # Pilih dir dengan font TERBANYAK: assets/fonts hanya sisa
-                # Montserrat, pack lengkap (Poppins/Anton/Archivo/Roboto) di
-                # backend/fonts ? kalau prefer assets, preset OFL baru tak
-                # ke-resolve dan libass diam-diam fallback ke font sistem.
-                font_candidates = [backend_dir / "assets" / "fonts", backend_dir / "fonts"]
-                fonts_dir = max(
-                    (d for d in font_candidates if d.exists() and any(d.iterdir())),
-                    key=lambda d: sum(1 for _ in d.glob("*.ttf")),
-                    default=None,
-                )
-                if fonts_dir is not None:
-                    rel_fonts = fonts_dir.relative_to(backend_dir).as_posix()
-                    fonts_opt = f":fontsdir={rel_fonts}"
-
-                ass_rel = ass_path.relative_to(backend_dir).as_posix()
+                sub_filter = subtitle_filter_args(ass_path, backend_dir)
                 result = run_ffmpeg([
                     "-i", str(source_abs.relative_to(backend_dir).as_posix()),
-                    "-vf", f"subtitles={ass_rel}{fonts_opt}",
+                    "-vf", sub_filter,
                     *video_encode_args(),
                     "-c:a", "copy",
                     str(final_path.relative_to(backend_dir).as_posix()),

@@ -17,7 +17,25 @@ from stages.caption import (
     _clip_window,
     _ass_word,
     _split_emoji_runs,
+    subtitle_filter_args,
 )
+
+
+def test_subtitle_filter_args_identical_for_preview_and_burn():
+    """Preview & burn harus pakai filter yang IDENTIK (font dir sama) —
+    akurasi 100% antara preview dan hasil klip."""
+    from pathlib import Path as _P
+    backend = _P(__file__).parent.parent
+    ass = backend / "data" / "clips_final" / "dummy.ass"
+    f = subtitle_filter_args(ass, backend)
+    # fontsdir menunjuk ke dir dengan font TERBANYAK (backend/fonts — 11 ttf)
+    assert "fontsdir=" in f, f
+    assert "backend/fonts" in f or "fonts" in f, f
+    # path ass relatif ke backend
+    assert f.startswith("subtitles=data/clips_final/dummy.ass"), f
+    # absolut di kedua sisi tidak mengubah hasil (deterministik)
+    f2 = subtitle_filter_args(ass, backend)
+    assert f == f2
 
 
 def test_emoji_runs_split():

@@ -917,24 +917,20 @@ async def caption_style_preview(body: dict):
     # run_in_executor: ffmpeg sync (up to 60s) di thread pool — kalau
     # dieksekusi inline, SEMUA SSE stream (log job, progress) ikut beku.
     def _render() -> int:
-        fonts_opt = ""
-        # Pilih dir font TERBANYAK — assets/fonts cuma sisa Montserrat,
-        # pack OFL lengkap di backend/fonts (lihat caption.py).
-        candidates = [DATA_DIR.parent / "assets" / "fonts", DATA_DIR.parent / "fonts"]
-        fonts_dir = max(
-            (d for d in candidates if d.exists() and any(d.iterdir())),
-            key=lambda d: sum(1 for _ in d.glob("*.ttf")),
-            default=None,
-        )
-        if fonts_dir is not None:
-            fonts_opt = f":fontsdir={fonts_dir.relative_to(DATA_DIR.parent).as_posix()}"
+        # subtitle_filter_args: SATU sumber dgn burn-in (caption.py) — font
+        # dir & path harus IDENTIK, kalau tidak preview ≠ hasil klip.
+        # backend_dir ABSOLUT: DATA_DIR.parent relatif ke CWD bisa beda.
+        from pathlib import Path as _P
+        from stages.caption import subtitle_filter_args
+        backend_dir = _P(__file__).resolve().parent
+        sub_filter = subtitle_filter_args(ass_path, backend_dir)
 
         return run_ffmpeg([
             "-f", "lavfi", "-i", "color=c=0x0d0d18:s=1080x1920:r=30:d=4",
-            "-vf", f"subtitles={ass_path.relative_to(DATA_DIR.parent).as_posix()}{fonts_opt}",
+            "-vf", sub_filter,
             "-frames:v", "1",
-            str((out_dir / "_style_preview.png").relative_to(DATA_DIR.parent).as_posix()),
-        ], timeout=60, cwd=str(DATA_DIR.parent)).returncode
+            str((out_dir / "_style_preview.png").relative_to(backend_dir).as_posix()),
+        ], timeout=60, cwd=str(backend_dir)).returncode
 
     loop = asyncio.get_running_loop()
     returncode = await loop.run_in_executor(None, _render)

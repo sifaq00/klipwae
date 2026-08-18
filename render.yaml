@@ -27,8 +27,4 @@ services:
       - key: R2_PUBLIC_URL
         sync: false
       - key: KLIPWAE_DB_PATH
-        value: "/data/jobs.db"
-    disk:
-      name: klipwae-data
-      mountPath: /data
-      sizeGB: 1
+        value: "/tmp/jobs.db"   # free tier TANPA disk — DB di ephemeral (reset tiap deploy)

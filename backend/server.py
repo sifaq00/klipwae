@@ -415,11 +415,16 @@ async def result_job(job_id: str, request: Request):
         # C1: result dari worker yang TELAT (kill/claim-hilang di tengah
         # upload) tak boleh menimpa status killed — dan worker lama yang
         # masih hidup setelah re-submit tak boleh korup job baru (queued).
+        # Fencing: status done HANYA diterima dari worker PEMILIK claim —
+        # worker A yang claim-nya basi (B sudah ambil) tak boleh menulis.
         cur = db.conn.execute(
-            "SELECT status FROM jobs WHERE id=?", (job_id,)
+            "SELECT status, claimed_by FROM jobs WHERE id=?", (job_id,)
         ).fetchone()
+        my_worker = request.headers.get("X-Worker-Id", "")
         if cur and status == "done" and cur["status"] in ("killed", "queued"):
             return {"status": "ignored", "reason": f"job sudah {cur['status']}"}
+        if cur and cur["claimed_by"] and my_worker and cur["claimed_by"] != my_worker:
+            return {"status": "ignored", "reason": "claim bukan milik worker ini"}
         if status == "failed":
             db.mark_job_status(job_id, "failed", failed_stage=body.get("failed_stage"),
                                error=body.get("error"))

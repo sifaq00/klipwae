@@ -303,7 +303,7 @@ export function JobDetail({ job, onBack, onRefresh, onRejected, onDelete, videoR
               Proses ulang
             </button>
           )}
-          {job.running && (
+          {(job.running || job.status === "queued" || job.status === "claimed") && (
             <button className="btn-ghost border-red-500/40 px-3 py-1.5 text-xs text-red-300 hover:border-red-400" onClick={handleKill}>Hentikan</button>
           )}
           {job.status !== "done" && !job.running && (
@@ -356,8 +356,8 @@ export function JobDetail({ job, onBack, onRefresh, onRejected, onDelete, videoR
           <p className="mt-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-300">{job.notice}</p>
         )}
 
-        {/* ── Progress bar live ── */}
-        {job.running && (
+        {/* ── Progress bar live (runner lokal ATAU worker mode) ── */}
+        {(job.running || job.status === "queued" || job.status === "claimed") && (
           <div className="mt-4">
             <div className="mb-1.5 flex items-center justify-between text-xs">
               <span className="flex items-center gap-1.5 font-semibold text-cyan-300">

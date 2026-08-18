@@ -119,17 +119,21 @@ def _run_job(job: dict):
     _current_job = job_id
 
     import runtime
+    import threading
     from config import Settings
     from db.jobs import JobDB
     from orchestrator import run_pipeline
     from stages.base import StageStatus
 
     stop = [False]
-    import threading
     threading.Thread(target=_heartbeat_loop, args=(job_id, stop), daemon=True).start()
 
     db = JobDB()
     db.create_job(job_id, job["url"], preset=job.get("preset") or "affiliate")
+    # set_job WAJIB sebelum reset: tanpa ini _job_stops[job_id] tak dibuat →
+    # kill_job dari heartbeat = no-op, procs tak ter-ikat ke job → cancel
+    # dari UI tak pernah berhentikan pipeline (mirror JobRunner._run).
+    runtime.set_job(job_id)
     runtime.reset()
     # stop[] di-set HANYA di akhir (setelah result POST): heartbeat harus
     # hidup SELAMA upload (2-3GB > 120s stale) supaya claim tak diambil

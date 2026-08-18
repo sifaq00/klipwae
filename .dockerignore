@@ -1,0 +1,24 @@
+# Build context harus sekecil mungkin — tanpa ini Docker mengirim
+# data/ (GB video), .venv, node_modules → SSD 100% + build 15 menit.
+data/
+backend/data/
+backend/.venv/
+backend/models/
+backend/.env
+backend/.env.*
+!backend/.env.example
+backend/logs/
+backend/tests/
+*.db
+*.db-wal
+*.db-shm
+node_modules/
+frontend/
+.git/
+.gitignore
+Dockerfile
+render.yaml
+start.bat
+docs/
+.superpowers/
+*.log

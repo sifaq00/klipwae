@@ -409,20 +409,17 @@ camera path, golden transcript fixtures.
 | No subtitles in final clip | Style has `enabled: false`, or the `.ass` was missing (now guarded — re-burn repairs) |
 | Windows: port already in use | `start.bat` refuses and suggests a different port |
 
-## Deployment (Vercel + Render + device worker)
+## Deployment (Vercel + HF Spaces + device worker)
 
-Arsitektur worker-pull: UI di Vercel ($0), API ringan + queue di **Render**
-free tier ($0), pipeline penuh dijalankan di **device kamu** (worker.py —
-GPU device dipakai, bukan server). Hasil klip disimpan di Cloudflare R2.
+Arsitektur worker-pull: UI di Vercel ($0), API ringan + queue di Hugging Face
+Spaces ($0), pipeline penuh dijalankan di **device kamu** (worker.py — GPU
+device dipakai, bukan server). Hasil klip disimpan di Cloudflare R2.
 
 ```
-[Vercel FE] -> [Render BE: queue + status + SSE] <- claim/poll <- [device: worker.py]
-                        |                                     |
-                        +-- presigned PUT URL ----------------> R2 bucket "klipwae" -> UI
+[Vercel FE] -> [HF Spaces BE: queue + status + SSE] <- claim/poll <- [device: worker.py]
+                        |                                      |
+                        +-- presigned PUT URL -----------------> R2 bucket "klipwae" -> UI
 ```
-
-> HF Spaces tidak dipakai: Docker/Gradio Spaces kini butuh PRO (kebijakan
-> baru HF), hanya Static (FE-only) yang gratis — tak bisa jalankan FastAPI.
 
 ### 1. Cloudflare R2 (storage)
 
@@ -431,30 +428,33 @@ GPU device dipakai, bukan server). Hasil klip disimpan di Cloudflare R2.
 3. Aktifkan **public read**: R2 → bucket → Settings → Public access → `r2.dev` subdomain
    atau custom domain → catat URL-nya (`R2_PUBLIC_URL`)
 
-### 2. Render (backend API) — blueprint
+### 2. Hugging Face Spaces (backend API)
 
-1. Signup https://render.com → Connect GitHub
-2. https://dashboard.render.com/blueprints → **New Blueprint Instance** → pilih repo
-   ini → Render baca `render.yaml` → buat service `klipwae-api` (Docker, free,
-   disk 1GB di `/data`)
-3. Set env di dashboard (Environment → secret):
+1. Buat Space baru: SDK **Docker**, hardware CPU basic (free)
+2. `Settings → Variables and secrets`:
    ```
+   WORKER_QUEUE=true
    WORKER_TOKEN=<secret-panjang-acak>     # dipakai worker device juga
    R2_ACCOUNT_ID=...
    R2_ACCESS_KEY_ID=...
    R2_SECRET_ACCESS_KEY=...
+   R2_BUCKET_NAME=klipwae
    R2_PUBLIC_URL=https://<r2-domain>     # dari langkah 1.3
-   FRONTEND_ORIGINS=https://<fe-url>     # Vercel URL kamu
    ```
-4. Build selesai → URL: `https://klipwae-api.onrender.com` → cek `/api/health`
+3. Push `Dockerfile` (root) + `backend/` ke Space via git:
+   ```bash
+   git remote add space https://huggingface.co/spaces/<username>/<space-name>
+   git push space main
+   ```
+4. Space jalan → URL: `https://<username>-<space-name>.hf.space`
 
-> Free tier sleep setelah 15 menit idle — worker heartbeat (30s) otomatis
-> bangunin pas claim, jadi praktis tak terasa.
+> Catatan: DB SQLite ada di `/data` (persistent disk HF). Space auto-sleep saat
+> idle — worker yang claim saat sleep akan retry (heartbeat 30s).
 
 ### 3. Vercel (frontend)
 
 1. Import repo, framework **Vite**, root directory `frontend/`
-2. `vercel.json` di root — ganti `destination` ke URL Render kamu
+2. `vercel.json` di root sudah ada — ganti destination ke URL Space kamu
 3. Build: `npm run build` — tak perlu env lain (API via proxy `/api`)
 
 ### 4. Device worker (pipeline penuh)
@@ -465,7 +465,7 @@ python -m venv .venv && .venv\Scripts\activate     # Windows
 pip install -r requirements-worker.txt              # whisper + YOLO + mediapipe
 
 # .env worker (device): TIDAK butuh R2 creds — cukup token + API URL
-set API_URL=https://klipwae-api.onrender.com/api
+set API_URL=https://<username>-<space-name>.hf.space/api
 set WORKER_TOKEN=<secret-sama>
 set WORKER_ID=pc-kantor
 set GOOGLE_API_KEY=<gemini-key>                     # analyze + caption jalan di device

@@ -1,0 +1,34 @@
+# Render Blueprint — deploy otomatis dari GitHub repo.
+# 1. Buka https://dashboard.render.com/blueprints → New Blueprint Instance
+# 2. Pilih repo ini → Render baca render.yaml → buat service
+# 3. Set Environment Group variables (WORKER_TOKEN, R2_*) di dashboard
+
+services:
+  - type: web
+    name: klipwae-api
+    runtime: docker
+    repo: https://github.com/sifaq00/klipwae
+    plan: free
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /api/health
+    envVars:
+      - key: WORKER_QUEUE
+        value: "true"
+      - key: WORKER_TOKEN
+        sync: false            # di-set manual di dashboard (secret)
+      - key: R2_ACCOUNT_ID
+        sync: false
+      - key: R2_ACCESS_KEY_ID
+        sync: false
+      - key: R2_SECRET_ACCESS_KEY
+        sync: false
+      - key: R2_BUCKET_NAME
+        value: "klipwae"
+      - key: R2_PUBLIC_URL
+        sync: false
+      - key: KLIPWAE_DB_PATH
+        value: "/data/jobs.db"
+    disk:
+      name: klipwae-data
+      mountPath: /data
+      sizeGB: 1

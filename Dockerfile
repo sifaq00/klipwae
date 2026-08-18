@@ -10,4 +10,4 @@ ENV KLIPWAE_DB_PATH=/data/jobs.db
 RUN mkdir -p /data
 
 EXPOSE 7860
-CMD ["uvicorn", "server:app", "--host", "0.0.0.0", "--port", "7860"]
+CMD ["sh", "-c", "uvicorn server:app --host 0.0.0.0 --port ${PORT:-7860}"]

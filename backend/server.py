@@ -659,7 +659,7 @@ async def delete_job(job_id: str):
     db = JobDB()
     try:
         # Anak dulu baru parent (FK constraint)
-        for t in ("metrics", "stage_runs", "segments"):
+        for t in ("metrics", "stage_runs", "segments", "job_logs"):
             db.conn.execute(f"DELETE FROM {t} WHERE job_id=?", (job_id,))
         db.conn.execute("DELETE FROM jobs WHERE id=?", (job_id,))
         db.conn.commit()

@@ -22,6 +22,8 @@ export const STATUS_TO_STAGE: Record<string, string> = {
   clipping: "clip",
   reframing: "reframe",
   captioning: "caption",
+  queued: "queued",
+  claimed: "claimed",
 };
 
 export const JOB_STATUS: Record<string, { label: string; color: string; dot: string }> = {

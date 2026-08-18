@@ -29,6 +29,41 @@ _log_buf: list[str] = []
 _last_flush = time.time()
 
 
+def _append_log(msg: str):
+    """Append ke buffer progress (tanpa print — dipanggil proxy stdout)."""
+    global _last_flush
+    _log_buf.append(msg)
+    if len(_log_buf) >= 20 or time.time() - _last_flush > 5:
+        _flush_logs()
+
+
+class _WorkerStdout:
+    """Mirror server._ThreadRoutedStdout: stages print progress via
+    print()/sys.stdout (analyze/clip/caption/transcribe) — tanpa proxy ini
+    progress chunk/whisper/download hanya di console worker, SSE UI kosong
+    (bar stuck 0%). Route ke _log → job_logs → SSE. Console worker tetap."""
+
+    def write(self, s: str):
+        sys.__stdout__.write(s)  # console tetap tampil
+        if s.strip():
+            _append_log(s)
+        return len(s)
+
+    def flush(self):
+        sys.__stdout__.flush()
+        _flush_logs()
+
+
+sys.stdout = _WorkerStdout()
+
+
+def _log(msg: str):
+    """Log ke stdout (console) + buffer → POST batch ke server (SSE UI)."""
+    sys.__stdout__.write(msg + "\n")
+    sys.__stdout__.flush()
+    _append_log(msg)
+
+
 def _api_retry(method: str, path: str, max_tries: int = 3, **kw):
     """POST result/upload penting — at-least-once: gagal jaringan → retry,
     kalau tetap gagal job tak lapor → server re-claim (duplikat proses)."""
@@ -50,15 +85,6 @@ def _api(method: str, path: str, **kw):
     r = requests.request(method, f"{API_URL}{path}", **kw)
     r.raise_for_status()
     return r.json() if r.content else {}
-
-
-def _log(msg: str):
-    """Log ke stdout + buffer → POST batch ke server (replay SSE di UI)."""
-    print(msg, flush=True)
-    _log_buf.append(msg)
-    global _last_flush
-    if len(_log_buf) >= 20 or time.time() - _last_flush > 5:
-        _flush_logs()
 
 
 def _flush_logs():

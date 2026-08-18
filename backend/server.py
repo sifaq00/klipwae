@@ -1,5 +1,6 @@
 import asyncio
 import io
+import json
 import logging
 import logging.handlers
 import os
@@ -10,7 +11,7 @@ from contextlib import asynccontextmanager
 from datetime import date
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -322,6 +323,139 @@ async def health():
     return {"status": "ok"}
 
 
+def _require_worker(request: Request):
+    """Worker endpoints: token wajib (WORKER_TOKEN). UI publik tetap bisa
+    baca status via GET biasa."""
+    from config import Settings
+    cfg = Settings()
+    if not cfg.worker_token:
+        raise HTTPException(503, "Worker mode tidak diaktifkan (WORKER_TOKEN kosong)")
+    auth = request.headers.get("Authorization", "")
+    if auth != f"Bearer {cfg.worker_token}":
+        raise HTTPException(401, "Token worker tidak valid")
+
+
+@app.post("/api/jobs/claim")
+async def claim_job(request: Request):
+    """Worker minta job: FIFO, atomic, stale-claim recoverable."""
+    _require_worker(request)
+    worker_id = request.headers.get("X-Worker-Id", "unknown")
+    db = JobDB()
+    try:
+        job = db.claim_job(worker_id)
+    finally:
+        db.close()
+    if not job:
+        return {"job": None}
+    return {"job": {"job_id": job["id"], "url": job["url"], "preset": job.get("preset") or "affiliate"}}
+
+
+@app.post("/api/jobs/{job_id}/heartbeat")
+async def heartbeat_job(job_id: str, request: Request):
+    _require_worker(request)
+    worker_id = request.headers.get("X-Worker-Id", "unknown")
+    db = JobDB()
+    try:
+        ok = db.heartbeat(job_id, worker_id)
+    finally:
+        db.close()
+    if not ok:
+        raise HTTPException(409, "Job tidak di-claim worker ini / sudah kedaluwarsa")
+    return {"status": "ok"}
+
+
+@app.post("/api/jobs/{job_id}/progress")
+async def progress_job(job_id: str, request: Request):
+    """Worker kirim batch log → simpan job_logs (replay SSE) + status running."""
+    _require_worker(request)
+    body = await request.json()
+    lines = body.get("lines", [])
+    status = body.get("status")
+    db = JobDB()
+    try:
+        db.append_job_log(job_id, lines)
+        if status:
+            db.mark_job_status(job_id, status)
+        # broadcast ke SSE listener job ini (kalau ada)
+        runner = JOB_RUNNERS.get(job_id)
+        if runner is None:
+            _wake_sse_worker(job_id)
+    finally:
+        db.close()
+    return {"status": "ok"}
+
+
+@app.post("/api/jobs/{job_id}/upload-url")
+async def upload_url_job(job_id: str, request: Request):
+    """Presigned PUT URL utk 1 file — worker upload langsung ke R2."""
+    _require_worker(request)
+    body = await request.json()
+    key = body.get("key", "")
+    content_type = body.get("content_type", "video/mp4")
+    if not key or ".." in key:
+        raise HTTPException(400, "Key tidak valid")
+    from utils.r2 import presigned_put, public_url
+    put_url = presigned_put(f"clips/{job_id}/{key}", content_type)
+    if not put_url:
+        raise HTTPException(503, "R2 belum dikonfigurasi di server")
+    return {"put_url": put_url, "public_url": public_url(f"clips/{job_id}/{key}")}
+
+
+@app.post("/api/jobs/{job_id}/result")
+async def result_job(job_id: str, request: Request):
+    """Worker lapor selesai: segments + daftar upload + status final."""
+    _require_worker(request)
+    body = await request.json()
+    db = JobDB()
+    try:
+        status = body.get("status", "done")
+        if status == "failed":
+            db.mark_job_status(job_id, "failed", failed_stage=body.get("failed_stage"),
+                               error=body.get("error"))
+        else:
+            db.mark_job_status(job_id, "done", failed_stage=None, error=None)
+            # segments: JSON dari worker
+            segments = body.get("segments", [])
+            from pathlib import Path as _P
+            seg_dir = _P("data/segments")
+            seg_dir.mkdir(parents=True, exist_ok=True)
+            (seg_dir / f"{job_id}.json").write_text(
+                json.dumps(segments, ensure_ascii=False), encoding="utf-8")
+            # uploads: [{key, name, kind}] — URL publik utk UI (R2)
+            from utils.r2 import public_url
+            uploads = []
+            for u in body.get("uploads", []):
+                up = dict(u)
+                up["url"] = public_url(u["key"])
+                uploads.append(up)
+            _uploads_cache[job_id] = uploads
+        # notice dari worker
+        if body.get("notice"):
+            db.set_notice(job_id, body["notice"])
+    finally:
+        db.close()
+    return {"status": "ok"}
+
+
+_uploads_cache: dict[str, list] = {}
+
+
+def _wake_sse_worker(job_id: str):
+    # SSE worker mode poll job_logs tiap 2s — tak perlu broadcast sinyal.
+    pass
+
+
+@app.get("/api/jobs/{job_id}/uploads")
+async def get_job_uploads(job_id: str):
+    from utils.r2 import public_url
+    uploads = _uploads_cache.get(job_id, [])
+    return {"uploads": [
+        {"name": u.get("name"), "kind": u.get("kind"),
+         "url": public_url(u["key"]) if "key" in u else u.get("url")}
+        for u in uploads
+    ]}
+
+
 @app.get("/api/scrape")
 async def scrape_links(q: str = "", url: str = "", limit: int = 50, min_duration: int = 0):
     """Scraper: natural-language search (q) atau channel/playlist (url) →
@@ -358,6 +492,19 @@ async def create_job(body: JobCreate):
         raise HTTPException(409, "Job already running")
 
     config = _setup()
+    preset = body.preset or "affiliate"
+
+    # WORKER MODE (worker_queue=true): job masuk antrean, worker device yang
+    # proses — bukan runner lokal. Meta early-fetch tetap jalan (judul cepat).
+    if config.worker_queue:
+        db0 = JobDB()
+        try:
+            db0.enqueue_job(video_id, body.url, preset=preset)
+        finally:
+            db0.close()
+        threading.Thread(target=_fetch_meta_early, args=(video_id, body.url), daemon=True).start()
+        return {"job_id": video_id, "status": "queued"}
+
     active = sum(1 for r in JOB_RUNNERS.values() if r.is_alive)
     if active >= config.max_concurrent_jobs:
         raise HTTPException(
@@ -365,7 +512,6 @@ async def create_job(body: JobCreate):
             f"Masih ada {active} job berjalan (maks {config.max_concurrent_jobs}). Tunggu selesai atau kill dulu.",
         )
 
-    preset = body.preset or "affiliate"
     runner = JobRunner(video_id, body.url, preset=preset)
     JOB_RUNNERS[video_id] = runner
     # INSERT dulu: _fetch_meta_early (UPDATE) tak boleh kalah sama INSERT
@@ -628,16 +774,39 @@ async def re_render_job(job_id: str):
 async def stream_log(job_id: str, since: int = 0):
     runner = JOB_RUNNERS.get(job_id)
     if not runner:
-        # Job lama / server restart: baca log persisten dari disk
-        log_path = _job_log_path(job_id)
-        lines = log_path.read_text(encoding="utf-8").splitlines() if log_path.exists() else []
-        lines = lines[since:]
+        # Job lama / server restart / WORKER MODE: baca job_logs (SQLite)
+        db = JobDB()
+        try:
+            lines = db.read_job_logs(job_id, since=since)
+        finally:
+            db.close()
 
         async def replay():
+            idx = since + len(lines)
             for line in lines:
                 yield {"event": "log", "data": line}
                 await asyncio.sleep(0)
-            yield {"event": "done", "data": ""}
+            yield {"event": "replay-done", "data": ""}
+            # worker mode: tunggu log baru (poll job_logs setiap 2s)
+            while True:
+                await asyncio.sleep(2)
+                db2 = JobDB()
+                try:
+                    row = db2.conn.execute(
+                        "SELECT status FROM jobs WHERE id=?", (job_id,)
+                    ).fetchone()
+                    new = db2.read_job_logs(job_id, since=idx)
+                finally:
+                    db2.close()
+                for line in new:
+                    yield {"event": "log", "data": line}
+                    await asyncio.sleep(0)
+                idx += len(new)
+                if not row or row["status"] in ("done", "failed", "killed", "queued"):
+                    # queued: worker belum claim — tetap tunggu (bukan done)
+                    if not row or row["status"] != "queued":
+                        yield {"event": "done", "data": ""}
+                        break
 
         return EventSourceResponse(replay())
 
@@ -687,9 +856,32 @@ async def get_segments(job_id: str):
         rows = db.conn.execute(
             "SELECT * FROM segments WHERE job_id=? ORDER BY id", (job_id,)
         ).fetchall()
-        return [_segment_json(dict(r)) for r in rows]
+        if rows:
+            return [_segment_json(dict(r)) for r in rows]
     finally:
         db.close()
+    # WORKER MODE: segments dari JSON hasil worker + URL klip dari R2
+    seg_path = Path("data/segments") / f"{job_id}.json"
+    if not seg_path.exists():
+        return []
+    segments = json.loads(seg_path.read_text(encoding="utf-8"))
+    uploads = _uploads_cache.get(job_id, [])
+    # map clip_idx → url (nama file: {job_id}_{clip_idx}_slug.mp4)
+    import re as _re
+    by_idx: dict[int, str] = {}
+    for u in uploads:
+        m = _re.search(rf"{job_id}_(\d+)_", u.get("name", ""))
+        if m:
+            by_idx[int(m.group(1))] = u.get("url", "")
+    for s in segments:
+        idx = s.get("clip_idx")
+        url = by_idx.get(idx) if idx is not None else None
+        if url:
+            s["clip_path"] = url
+            s["clip_url"] = url
+            s["caption_url"] = url
+            s["thumb_url"] = url.replace(".mp4", ".jpg")
+    return segments
 
 
 def _resolve_clip_path(clip_path: str) -> Path:

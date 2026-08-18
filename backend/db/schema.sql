@@ -9,9 +9,19 @@ CREATE TABLE IF NOT EXISTS jobs (
     error_message  TEXT,
     notice         TEXT,
     downloaded     INTEGER NOT NULL DEFAULT 0,
-    preset         TEXT DEFAULT 'affiliate',
+    claimed_by     TEXT,
+    claimed_at     REAL,
+    heartbeat_at   REAL,
     created_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS job_logs (
+    job_id         TEXT NOT NULL,
+    seq            INTEGER NOT NULL,
+    line           TEXT NOT NULL,
+    ts             TEXT DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (job_id, seq)
 );
 
 CREATE TABLE IF NOT EXISTS stage_runs (

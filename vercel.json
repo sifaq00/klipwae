@@ -1,0 +1,5 @@
+{
+  "rewrites": [
+    { "source": "/api/(.*)", "destination": "https://your-hf-space.space/api/$1" }
+  ]
+}

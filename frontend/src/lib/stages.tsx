@@ -26,6 +26,8 @@ export const STATUS_TO_STAGE: Record<string, string> = {
 
 export const JOB_STATUS: Record<string, { label: string; color: string; dot: string }> = {
   pending: { label: "Antre", color: "text-slate-400 bg-slate-400/10 border-slate-400/30", dot: "bg-slate-400" },
+  queued: { label: "Menunggu worker", color: "text-slate-300 bg-slate-400/15 border-slate-400/40", dot: "bg-slate-300" },
+  claimed: { label: "Diproses worker", color: "text-amber-300 bg-amber-400/10 border-amber-400/30", dot: "bg-amber-400" },
   downloading: { label: "Downloading", color: "text-cyan-300 bg-cyan-400/10 border-cyan-400/30", dot: "bg-cyan-400" },
   transcribing: { label: "Transcribing", color: "text-cyan-300 bg-cyan-400/10 border-cyan-400/30", dot: "bg-cyan-400" },
   analyzing: { label: "Analyzing", color: "text-sky-300 bg-sky-400/10 border-sky-400/30", dot: "bg-sky-400" },

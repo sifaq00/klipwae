@@ -1,0 +1,9 @@
+fastapi
+uvicorn[standard]
+sse-starlette
+pydantic-settings
+structlog
+requests
+boto3
+python-dotenv
+tenacity

@@ -62,6 +62,11 @@ def run_with_retry(stage: Stage, job_id: str, db: JobDB, config: "Settings") -> 
 
 
 def run_pipeline(job_id: str, db: JobDB, config: "Settings", log_func: callable = print):
+    # Pastikan semua stage ter-register (auto-import stages/__init__ dihapus
+    # supaya server API mode ringan — worker yang jalankan pipeline harus
+    # import eksplisit di sini). Import idempoten; dekorator @register
+    # mengisi STAGE_REGISTRY.
+    from stages import ingest, transcribe, analyze, clip, caption, reframe  # noqa: F401
     runtime.reset()
     db.mark_job_status(job_id, "running")
     for stage in topological_order(STAGE_REGISTRY):

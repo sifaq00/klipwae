@@ -1,6 +1,7 @@
 import json
 import os
 import sqlite3
+import time
 from pathlib import Path
 from typing import Optional
 
@@ -65,6 +66,13 @@ def _ensure_columns(conn: sqlite3.Connection):
             conn.execute("ALTER TABLE jobs ADD COLUMN downloaded INTEGER NOT NULL DEFAULT 0")
         if "preset" not in job_cols:
             conn.execute("ALTER TABLE jobs ADD COLUMN preset TEXT DEFAULT 'affiliate'")
+        for col, ddl in {
+            "claimed_by": "TEXT",
+            "claimed_at": "REAL",
+            "heartbeat_at": "REAL",
+        }.items():
+            if col not in job_cols:
+                conn.execute(f"ALTER TABLE jobs ADD COLUMN {col} {ddl}")
     conn.commit()
 
 
@@ -127,6 +135,75 @@ class JobDB:
             (job_id,),
         )
         self.conn.commit()
+
+    # ---- Worker-pull queue ----
+
+    def enqueue_job(self, job_id: str, url: str, preset: str = "affiliate"):
+        """Job masuk antrean worker (bukan di-proses server lokal)."""
+        self.conn.execute(
+            "INSERT INTO jobs (id, url, preset, status) VALUES (?, ?, ?, 'queued') "
+            "ON CONFLICT(id) DO UPDATE SET status='queued', preset=excluded.preset, "
+            "claimed_by=NULL, claimed_at=NULL, heartbeat_at=NULL",
+            (job_id, url, preset or "affiliate"),
+        )
+        self.conn.commit()
+
+    def claim_job(self, worker_id: str, stale_after: float = 120.0) -> dict | None:
+        """Atomic claim FIFO. Job yang di-claim worker lain tapi heartbeat-nya
+        basi (>stale_after detik) dianggap crash → bisa di-claim ulang."""
+        now = time.time()
+        self.conn.execute("BEGIN IMMEDIATE")
+        try:
+            row = self.conn.execute(
+                "SELECT id, url, preset FROM jobs "
+                "WHERE status='queued' "
+                "   OR (status='claimed' AND (heartbeat_at IS NULL OR ? - heartbeat_at > ?)) "
+                "ORDER BY created_at ASC, id ASC LIMIT 1",
+                (now, stale_after),
+            ).fetchone()
+            if not row:
+                self.conn.commit()
+                return None
+            self.conn.execute(
+                "UPDATE jobs SET status='claimed', claimed_by=?, claimed_at=?, "
+                "heartbeat_at=?, error_message=NULL, updated_at=CURRENT_TIMESTAMP WHERE id=?",
+                (worker_id, now, now, row["id"]),
+            )
+            self.conn.commit()
+            return dict(row)
+        except Exception:
+            self.conn.rollback()
+            raise
+
+    def heartbeat(self, job_id: str, worker_id: str) -> bool:
+        """Perpanjang claim (hanya oleh worker pemilik)."""
+        cur = self.conn.execute(
+            "UPDATE jobs SET heartbeat_at=? WHERE id=? AND claimed_by=?",
+            (time.time(), job_id, worker_id),
+        )
+        self.conn.commit()
+        return cur.rowcount > 0
+
+    def append_job_log(self, job_id: str, lines: list[str]):
+        """Append log worker ke tabel job_logs (replay SSE lintas restart)."""
+        if not lines:
+            return
+        base = self.conn.execute(
+            "SELECT COALESCE(MAX(seq), 0) FROM job_logs WHERE job_id=?", (job_id,)
+        ).fetchone()[0]
+        with self.conn:
+            for i, line in enumerate(lines, 1):
+                self.conn.execute(
+                    "INSERT INTO job_logs (job_id, seq, line) VALUES (?, ?, ?)",
+                    (job_id, base + i, line),
+                )
+
+    def read_job_logs(self, job_id: str, since: int = 0) -> list[str]:
+        rows = self.conn.execute(
+            "SELECT line FROM job_logs WHERE job_id=? AND seq > ? ORDER BY seq",
+            (job_id, since),
+        ).fetchall()
+        return [r["line"] for r in rows]
 
     def log_stage_start(self, job_id: str, stage: str, attempt: int = 1):
         self.conn.execute(

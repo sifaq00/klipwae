@@ -82,11 +82,13 @@ def _heartbeat_loop(job_id: str, stop: list[bool]):
     while not stop[0]:
         try:
             _api("POST", f"/jobs/{job_id}/heartbeat")
-            # cancel channel: user kill di UI → status killed → berhenti lokal
+            # cancel channel: user kill di UI → status killed → berhenti LOKAL.
+            # Scoped: kill_job(job_id, ident) — jangan kill_all (shutdown
+            # global tak pernah clear → worker brick utk semua job berikutnya).
             status = _api("GET", f"/jobs/{job_id}")["status"]
             if status == "killed":
                 print("[worker] job dibatalkan user — berhenti", flush=True)
-                runtime.kill_all()
+                runtime.kill_job(job_id, threading.get_ident())
                 stop[0] = True
                 return
         except Exception:
@@ -129,16 +131,22 @@ def _run_job(job: dict):
     db = JobDB()
     db.create_job(job_id, job["url"], preset=job.get("preset") or "affiliate")
     runtime.reset()
+    # stop[] di-set HANYA di akhir (setelah result POST): heartbeat harus
+    # hidup SELAMA upload (2-3GB > 120s stale) supaya claim tak diambil
+    # worker lain + cancel channel tetap terbuka.
     try:
         try:
             result = run_pipeline(job_id, db, Settings(), log_func=_log)
-        finally:
-            stop[0] = True
+        except Exception as e:
+            result = None
+            _log(f"[worker] pipeline exception: {e}")
 
         _flush_logs()
 
         if runtime.stop_requested():
             status, stage, err = "killed", None, "Killed"
+        elif result is None:
+            status, stage, err = "failed", "pipeline", "exception"
         elif result.status != StageStatus.DONE:
             status, stage, err = "failed", getattr(result, "failed_stage", None), result.error
         else:
@@ -149,24 +157,33 @@ def _run_job(job: dict):
     # upload hasil final (kecuali killed total tanpa file)
     uploads = []
     if status == "done":
-        final_dir = Path("data/clips_final")
-        mp4s = sorted(final_dir.glob(f"{job_id}_*.mp4"))
-        if mp4s:
-            uploads += _upload_files(job_id, {p.name: p for p in mp4s}, "clip")
-        ass = sorted(final_dir.glob(f"{job_id}_*.ass"))
-        if ass:
-            uploads += _upload_files(job_id, {p.name: p for p in ass}, "ass")
-        seg_path = Path("data/segments") / f"{job_id}.json"
-        segments = json.loads(seg_path.read_text(encoding="utf-8")) if seg_path.exists() else []
+        try:
+            final_dir = Path("data/clips_final")
+            mp4s = sorted(final_dir.glob(f"{job_id}_*.mp4"))
+            if mp4s:
+                uploads += _upload_files(job_id, {p.name: p for p in mp4s}, "clip")
+            ass = sorted(final_dir.glob(f"{job_id}_*.ass"))
+            if ass:
+                uploads += _upload_files(job_id, {p.name: p for p in ass}, "ass")
+            seg_path = Path("data/segments") / f"{job_id}.json"
+            segments = json.loads(seg_path.read_text(encoding="utf-8")) if seg_path.exists() else []
+        except Exception as e:
+            _log(f"[worker] upload gagal: {e}")
+            status, stage, err = "failed", "upload", str(e)[:500]
+            segments = []
     else:
         segments = []
 
-    # lapor hasil
+    # lapor hasil (retry at-least-once) — HANYA setelah ini stop heartbeat
     body = {"status": status, "segments": segments, "uploads": uploads}
     if err:
         body["error"] = err
         body["failed_stage"] = stage
-    _api_retry("POST", f"/jobs/{job_id}/result", json=body)
+    try:
+        _api_retry("POST", f"/jobs/{job_id}/result", json=body)
+    except Exception as e:
+        print(f"[worker] result TIDAK terkirim: {e}", flush=True)
+    stop[0] = True
     _log(f"[worker] {job_id}: {status}")
     _current_job = None
 

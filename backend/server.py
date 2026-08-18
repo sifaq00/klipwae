@@ -412,6 +412,14 @@ async def result_job(job_id: str, request: Request):
         if status not in ("done", "failed", "killed"):
             # whitelist: typo/status tak dikenal TIDAK boleh jadi "done" palsu
             raise HTTPException(422, f"Status tidak dikenal: {status}")
+        # C1: result dari worker yang TELAT (kill/claim-hilang di tengah
+        # upload) tak boleh menimpa status killed — dan worker lama yang
+        # masih hidup setelah re-submit tak boleh korup job baru (queued).
+        cur = db.conn.execute(
+            "SELECT status FROM jobs WHERE id=?", (job_id,)
+        ).fetchone()
+        if cur and status == "done" and cur["status"] in ("killed", "queued"):
+            return {"status": "ignored", "reason": f"job sudah {cur['status']}"}
         if status == "failed":
             db.mark_job_status(job_id, "failed", failed_stage=body.get("failed_stage"),
                                error=body.get("error"))
@@ -458,7 +466,10 @@ def _wake_sse_worker(job_id: str):
 @app.get("/api/jobs/{job_id}/uploads")
 async def get_job_uploads(job_id: str):
     from utils.r2 import public_url
-    uploads = _uploads_cache.get(job_id, [])
+    uploads = _uploads_cache.get(job_id)
+    if uploads is None:
+        up_path = Path("data/segments") / f"{job_id}.uploads.json"
+        uploads = json.loads(up_path.read_text(encoding="utf-8")) if up_path.exists() else []
     return {"uploads": [
         {"name": u.get("name"), "kind": u.get("kind"),
          "url": public_url(u["key"]) if "key" in u else u.get("url")}

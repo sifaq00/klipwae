@@ -46,12 +46,11 @@ def presigned_put(key: str, content_type: str = "video/mp4", expires: int = 600)
 
 
 def public_url(key: str) -> str:
-    """URL publik untuk UI. R2_PUBLIC_URL = custom domain (disarankan)
-    atau r2.dev URL. Tanpa itu fallback presigned GET (expired) — UI harus
-    refresh; dokumentasikan pakai custom domain."""
+    """URL publik utk UI. R2_PUBLIC_URL WAJIB (custom domain / r2.dev) —
+    R2 TIDAK punya pola {bucket}.r2.dev; tanpanya URL rusak."""
     if _PUBLIC_URL:
         return f"{_PUBLIC_URL}/{key}"
-    return presigned_get(key) or f"https://{_BUCKET}.r2.dev/{key}"
+    return ""
 
 
 def presigned_get(key: str, expires: int = 3600) -> Optional[str]:

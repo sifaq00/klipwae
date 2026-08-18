@@ -29,6 +29,20 @@ _log_buf: list[str] = []
 _last_flush = time.time()
 
 
+def _api_retry(method: str, path: str, max_tries: int = 3, **kw):
+    """POST result/upload penting — at-least-once: gagal jaringan → retry,
+    kalau tetap gagal job tak lapor → server re-claim (duplikat proses)."""
+    last = None
+    for attempt in range(max_tries):
+        try:
+            return _api(method, path, **kw)
+        except Exception as e:
+            last = e
+            print(f"[worker] {path} gagal ({attempt+1}/{max_tries}): {e}", flush=True)
+            time.sleep(2 * (attempt + 1))
+    raise last
+
+
 def _api(method: str, path: str, **kw):
     kw.setdefault("headers", {})["Authorization"] = f"Bearer {WORKER_TOKEN}"
     kw["headers"]["X-Worker-Id"] = WORKER_ID
@@ -49,11 +63,11 @@ def _log(msg: str):
 
 def _flush_logs():
     global _log_buf, _last_flush
-    if not _log_buf:
+    if not _log_buf or not _current_job:
         return
     buf, _log_buf = _log_buf, []
     try:
-        _api("POST", f"/jobs/{_current_job}/progress", json={"lines": buf})
+        _api_retry("POST", f"/jobs/{_current_job}/progress", json={"lines": buf})
         _last_flush = time.time()
     except Exception as e:
         _log_buf = buf + _log_buf  # retry di flush berikutnya
@@ -64,9 +78,17 @@ _current_job: str | None = None
 
 
 def _heartbeat_loop(job_id: str, stop: list[bool]):
+    import runtime
     while not stop[0]:
         try:
             _api("POST", f"/jobs/{job_id}/heartbeat")
+            # cancel channel: user kill di UI → status killed → berhenti lokal
+            status = _api("GET", f"/jobs/{job_id}")["status"]
+            if status == "killed":
+                print("[worker] job dibatalkan user — berhenti", flush=True)
+                runtime.kill_all()
+                stop[0] = True
+                return
         except Exception:
             pass  # claim expired → worker lain ambil; kita berhenti saat pipeline selesai
         time.sleep(HEARTBEAT_SEC)
@@ -76,11 +98,12 @@ def _upload_files(job_id: str, files: dict[str, Path], kind: str) -> list[dict]:
     """Upload file ke R2 via presigned PUT. files = {r2_key: local_path}."""
     uploaded = []
     for key, path in files.items():
+        ctype = "text/plain" if path.suffix == ".ass" else "video/mp4"
         put_url = _api("POST", f"/jobs/{job_id}/upload-url",
-                       json={"key": key, "content_type": "video/mp4"})["put_url"]
+                       json={"key": key, "content_type": ctype})["put_url"]
         with open(path, "rb") as fh:
             r = requests.put(put_url, data=fh,
-                             headers={"Content-Type": "video/mp4"}, timeout=600)
+                             headers={"Content-Type": ctype}, timeout=600)
         r.raise_for_status()
         uploaded.append({"key": f"clips/{job_id}/{key}", "name": path.name, "kind": kind})
         _log(f"    upload {path.name} → R2")
@@ -143,7 +166,7 @@ def _run_job(job: dict):
     if err:
         body["error"] = err
         body["failed_stage"] = stage
-    _api("POST", f"/jobs/{job_id}/result", json=body)
+    _api_retry("POST", f"/jobs/{job_id}/result", json=body)
     _log(f"[worker] {job_id}: {status}")
     _current_job = None
 

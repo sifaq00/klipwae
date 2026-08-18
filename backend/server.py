@@ -409,8 +409,14 @@ async def result_job(job_id: str, request: Request):
     db = JobDB()
     try:
         status = body.get("status", "done")
+        if status not in ("done", "failed", "killed"):
+            # whitelist: typo/status tak dikenal TIDAK boleh jadi "done" palsu
+            raise HTTPException(422, f"Status tidak dikenal: {status}")
         if status == "failed":
             db.mark_job_status(job_id, "failed", failed_stage=body.get("failed_stage"),
+                               error=body.get("error"))
+        elif status == "killed":
+            db.mark_job_status(job_id, "killed", failed_stage=body.get("failed_stage"),
                                error=body.get("error"))
         else:
             db.mark_job_status(job_id, "done", failed_stage=None, error=None)
@@ -421,7 +427,9 @@ async def result_job(job_id: str, request: Request):
             seg_dir.mkdir(parents=True, exist_ok=True)
             (seg_dir / f"{job_id}.json").write_text(
                 json.dumps(segments, ensure_ascii=False), encoding="utf-8")
-            # uploads: [{key, name, kind}] — URL publik utk UI (R2)
+            # uploads: [{key, name, kind}] — URL publik utk UI (R2).
+            # Persist ke JSON (bukan cache RAM): server restart tak boleh
+            # menghilangkan URL klip.
             from utils.r2 import public_url
             uploads = []
             for u in body.get("uploads", []):
@@ -429,6 +437,8 @@ async def result_job(job_id: str, request: Request):
                 up["url"] = public_url(u["key"])
                 uploads.append(up)
             _uploads_cache[job_id] = uploads
+            uploads_path = seg_dir / f"{job_id}.uploads.json"
+            uploads_path.write_text(json.dumps(uploads, ensure_ascii=False), encoding="utf-8")
         # notice dari worker
         if body.get("notice"):
             db.set_notice(job_id, body["notice"])
@@ -499,6 +509,13 @@ async def create_job(body: JobCreate):
     if config.worker_queue:
         db0 = JobDB()
         try:
+            # I5: jangan curi claim yang hidup — re-submit video yang lagi
+            # diproses → 409 (ON CONFLICT lama me-reset status ke queued).
+            row = db0.conn.execute(
+                "SELECT status FROM jobs WHERE id=?", (video_id,)
+            ).fetchone()
+            if row and row["status"] in ("queued", "claimed", "running"):
+                raise HTTPException(409, "Job sedang dalam antrean/berjalan")
             db0.enqueue_job(video_id, body.url, preset=preset)
         finally:
             db0.close()
@@ -681,6 +698,22 @@ async def kill_job(job_id: str):
     if reburn and reburn.is_alive():
         runtime.kill_job(job_id, reburn.ident)
         return {"status": "kill_requested"}
+    # WORKER MODE: set status cancelled — worker poll status & berhenti
+    # (tanpa kanal cancel server→worker, worker cek status per progress)
+    db = JobDB()
+    try:
+        row = db.conn.execute(
+            "SELECT status, claimed_by FROM jobs WHERE id=?", (job_id,)
+        ).fetchone()
+        if not row:
+            raise HTTPException(404, "Job tidak ditemukan")
+        if row["status"] in ("queued", "claimed"):
+            db.mark_job_status(job_id, "killed", error="Dibatalkan user")
+            db.conn.execute("UPDATE jobs SET claimed_by=NULL WHERE id=?", (job_id,))
+            db.conn.commit()
+            return {"status": "kill_requested"}
+    finally:
+        db.close()
     raise HTTPException(404, "Job tidak sedang jalan")
 
 
@@ -865,7 +898,11 @@ async def get_segments(job_id: str):
     if not seg_path.exists():
         return []
     segments = json.loads(seg_path.read_text(encoding="utf-8"))
-    uploads = _uploads_cache.get(job_id, [])
+    # uploads: cache RAM dulu, fallback file JSON (server restart)
+    uploads = _uploads_cache.get(job_id)
+    if uploads is None:
+        up_path = seg_path.with_suffix(".uploads.json")
+        uploads = json.loads(up_path.read_text(encoding="utf-8")) if up_path.exists() else []
     # map clip_idx → url (nama file: {job_id}_{clip_idx}_slug.mp4)
     import re as _re
     by_idx: dict[int, str] = {}

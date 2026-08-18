@@ -158,7 +158,7 @@ class JobDB:
                 "SELECT id, url, preset FROM jobs "
                 "WHERE status='queued' "
                 "   OR (status='claimed' AND (heartbeat_at IS NULL OR ? - heartbeat_at > ?)) "
-                "ORDER BY created_at ASC, id ASC LIMIT 1",
+                "ORDER BY created_at ASC, rowid ASC LIMIT 1",
                 (now, stale_after),
             ).fetchone()
             if not row:

@@ -1,0 +1,10 @@
+# Deps LENGKAP utk WORKER device + CI test (pipeline: whisper, YOLO, mediapipe).
+# Server HF Spaces cukup pakai requirements.txt (ringan).
+-r requirements.txt
+faster-whisper
+ultralytics
+mediapipe
+opencv-python-headless
+numpy
+google-genai
+torch --index-url https://download.pytorch.org/whl/cpu

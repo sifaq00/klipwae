@@ -217,6 +217,30 @@ def _run_job(job: dict):
     _log(f"[worker] {job_id}: {status}")
     _current_job = None
 
+    # #4: bersihkan artefak lokal setelah upload sukses — device disk
+    # tumbuh ~2-3GB/job tanpa ini (raw + clips + final + tracks).
+    if status == "done":
+        _cleanup_job_files(job_id)
+
+
+def _cleanup_job_files(job_id: str):
+    """Hapus file lokal job (raw/klip/final/tracks/transcript/segments).
+    Semua sudah di-upload ke R2 + laporan result — aman dibuang."""
+    removed = 0
+    for d in ("raw", "clips_raw", "clips_final", "tracks", "transcripts", "segments"):
+        for p in (Path("data") / d).glob(f"{job_id}_*"):
+            try:
+                if p.is_dir():
+                    import shutil
+                    shutil.rmtree(p)
+                else:
+                    p.unlink()
+                removed += 1
+            except OSError:
+                pass
+    if removed:
+        print(f"[worker] cleanup: {removed} file lokal dihapus", flush=True)
+
 
 def main():
     if not WORKER_TOKEN:

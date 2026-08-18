@@ -268,11 +268,16 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Auto-Clipper API", lifespan=lifespan)
-# Self-use tool: hanya izinkan origin frontend dev. Jangan "*" — API ini
-# bisa menjalankan job berat & menulis .env.
+# CORS: origin frontend via env FRONTEND_ORIGINS (Vercel/Render URL) —
+# default localhost dev. Jangan "*" — API ini bisa jalankan job berat.
+import os as _os
+_origins = [o.strip() for o in _os.environ.get(
+    "FRONTEND_ORIGINS",
+    "http://localhost:5173,http://127.0.0.1:5173",
+).split(",") if o.strip()]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=_origins,
     allow_methods=["*"],
     allow_headers=["*"],
 )

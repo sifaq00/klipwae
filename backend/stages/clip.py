@@ -232,6 +232,12 @@ class ClipStage(Stage):
                     # retry benar-benar memperbaiki state (bukan artefak yatim).
                     if isinstance(e, sqlite3.Error):
                         raise
+                    try:
+                        import psycopg2
+                        if isinstance(e, psycopg2.Error):
+                            raise
+                    except ImportError:
+                        pass
                     logger.warning("clip_skip", error=str(e))
                     errors.append({"chunk": str(e)})
 

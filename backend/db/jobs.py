@@ -8,13 +8,19 @@ from typing import Optional
 # KLIPWAE_DB_PATH: isolasi DB utk test (server live & pytest tak boleh
 # rebutan lock file yang sama). Dibaca LAZY tiap get_connection — test
 # yang ganti env di tengah suite harus dapat DB yang benar.
+# DATABASE_URL (Supabase/Neon): kalau ada → Postgres (prod), selain itu
+# SQLite (dev/test). API kedua backend identik via wrapper db/pg.py.
 
 
 def _db_path() -> Path:
     return Path(os.environ.get("KLIPWAE_DB_PATH", "data/jobs.db"))
 
 
-def get_connection() -> sqlite3.Connection:
+def get_connection():
+    from db.pg import pg_enabled
+    if pg_enabled():
+        from db.pg import get_pg_connection
+        return get_pg_connection()
     db_path = _db_path()
     db_path.parent.mkdir(parents=True, exist_ok=True)
     # check_same_thread=False: caption stage burn paralel (ThreadPoolExecutor)
@@ -28,14 +34,41 @@ def get_connection() -> sqlite3.Connection:
 
 
 def init_db():
-    schema = Path(__file__).parent / "schema.sql"
+    from db.pg import pg_enabled
+    if pg_enabled():
+        schema = Path(__file__).parent / "schema.pg.sql"
+    else:
+        schema = Path(__file__).parent / "schema.sql"
     with get_connection() as conn:
         conn.executescript(schema.read_text())
         _ensure_columns(conn)
 
 
-def _ensure_columns(conn: sqlite3.Connection):
-    """Migrasi ringan untuk DB yang sudah ada: tambah kolom baru kalau belum ada."""
+def _ensure_columns(conn):
+    """Migrasi ringan utk DB yang sudah ada — dual (sqlite/pg).
+    Postgres: ALTER TABLE ADD COLUMN IF NOT EXISTS. SQLite: PRAGMA scan."""
+    from db.pg import pg_enabled
+    if pg_enabled():
+        for table, cols in (
+            ("segments", {
+                "clip_idx": "INTEGER", "caption_text": "TEXT",
+                "hook_score": "INTEGER", "virality_reason": "TEXT",
+                "affiliate_caption": "TEXT", "hashtags": "TEXT",
+                "clip_start_sec": "DOUBLE PRECISION", "clip_end_sec": "DOUBLE PRECISION",
+            }),
+            ("jobs", {
+                "caption_style": "TEXT", "notice": "TEXT",
+                "downloaded": "INTEGER NOT NULL DEFAULT 0",
+                "preset": "TEXT DEFAULT 'affiliate'",
+                "claimed_by": "TEXT", "claimed_at": "DOUBLE PRECISION",
+                "heartbeat_at": "DOUBLE PRECISION",
+            }),
+        ):
+            for col, ddl in cols.items():
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {col} {ddl}")
+        conn.commit()
+        return
+
     tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
     if "segments" in tables:
         existing = {r[1] for r in conn.execute("PRAGMA table_info(segments)").fetchall()}
@@ -158,7 +191,7 @@ class JobDB:
                 "SELECT id, url, preset FROM jobs "
                 "WHERE status='queued' "
                 "   OR (status='claimed' AND (heartbeat_at IS NULL OR ? - heartbeat_at > ?)) "
-                "ORDER BY created_at ASC, rowid ASC LIMIT 1",
+                "ORDER BY created_at ASC, id ASC LIMIT 1",
                 (now, stale_after),
             ).fetchone()
             if not row:

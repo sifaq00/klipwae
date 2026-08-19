@@ -246,6 +246,8 @@ def main():
     if not WORKER_TOKEN:
         print("WORKER_TOKEN wajib di env", file=sys.stderr)
         sys.exit(1)
+    from db.jobs import init_db
+    init_db()  # DB lokal worker (pipeline) — tabel wajib ada
     _log(f"[worker] {WORKER_ID} menunggu job → {API_URL}")
     while True:
         try:

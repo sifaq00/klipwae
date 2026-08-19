@@ -12,7 +12,7 @@ import boto3
 from botocore.config import Config
 
 _BUCKET = os.environ.get("R2_BUCKET_NAME", "klipwae")
-_PUBLIC_URL = os.environ.get("R2_PUBLIC_URL", "").rstrip("/")
+_PUBLIC_URL = os.environ.get("R2_PUBLIC_URL", "").strip().rstrip("/")
 
 
 def _client():
@@ -46,10 +46,13 @@ def presigned_put(key: str, content_type: str = "video/mp4", expires: int = 600)
 
 
 def public_url(key: str) -> str:
-    """URL publik utk UI. R2_PUBLIC_URL WAJIB (custom domain / r2.dev) —
-    R2 TIDAK punya pola {bucket}.r2.dev; tanpanya URL rusak."""
+    """URL publik utk UI. R2_PUBLIC_URL = custom domain / r2.dev — scheme
+    https:// ditambahkan otomatis kalau user set tanpa prefix."""
     if _PUBLIC_URL:
-        return f"{_PUBLIC_URL}/{key}"
+        base = _PUBLIC_URL
+        if not base.startswith("http://") and not base.startswith("https://"):
+            base = "https://" + base
+        return f"{base}/{key}"
     return ""
 
 

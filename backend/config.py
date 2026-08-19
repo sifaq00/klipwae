@@ -5,7 +5,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
-    google_api_key: str
+    google_api_key: str = ""  # WAJIB di device worker (pipeline); server API mode tak butuh
     analyze_model: str = "gemini-flash-latest"
     analyze_model_fallback: str = "gemini-3.6-flash"
     worker_token: str = ""

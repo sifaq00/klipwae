@@ -265,21 +265,26 @@ class JobDB:
             (job_id, stage, attempt),
         )
         self.conn.commit()
+        return time.time()
 
-    def log_stage_end(self, job_id: str, stage: str, result):
+    def log_stage_end(self, job_id: str, stage: str, result, started_at: float | None = None):
         # Update hanya row running TERBARU untuk (job_id, stage). Tanpa LIMIT,
         # kalau ada stale 'running' row dari attempt sebelumnya (mis. proses
         # di-kill sebelum log_stage_end), multiple row ke-update sekaligus.
+        # duration_ms dihitung di PYTHON (time.time diff) — strftime('%s')
+        # tak ada di Postgres & %s bentrok dgn placeholder psycopg2.
+        duration_ms = None
+        if started_at:
+            duration_ms = int((time.time() - started_at) * 1000)
         self.conn.execute(
             """UPDATE stage_runs SET status=?, finished_at=CURRENT_TIMESTAMP,
-               duration_ms=(strftime('%s','now') - strftime('%s',started_at))*1000,
-               error_message=?
+               duration_ms=?, error_message=?
                WHERE id = (
                    SELECT id FROM stage_runs
                    WHERE job_id=? AND stage=? AND status='running'
                    ORDER BY id DESC LIMIT 1
                )""",
-            (result.status.value, result.error, job_id, stage),
+            (result.status.value, duration_ms, result.error, job_id, stage),
         )
         self.conn.commit()
 

@@ -48,12 +48,12 @@ def run_with_retry(stage: Stage, job_id: str, db: JobDB, config: "Settings") -> 
     for attempt in range(1, max_attempts + 1):
         if runtime.stop_requested():
             return StageResult(status=StageStatus.FAILED, error="Killed")
-        db.log_stage_start(job_id, stage.name, attempt)
+        started_at = db.log_stage_start(job_id, stage.name, attempt)
         try:
             result = stage.run(job_id, db, config)
         except Exception as e:
             result = StageResult(status=StageStatus.FAILED, error=str(e))
-        db.log_stage_end(job_id, stage.name, result)
+        db.log_stage_end(job_id, stage.name, result, started_at)
         if result.status != StageStatus.FAILED:
             return result
         if attempt < max_attempts:

@@ -6,6 +6,9 @@ from pathlib import Path
 
 _DB = Path(__file__).parent / "test_jobs.db"
 os.environ["KLIPWAE_DB_PATH"] = str(_DB)
+# Isolasi: test SELALU pakai SQLite — operator dengan DATABASE_URL export
+# tak boleh mutasi Supabase live dari test suite.
+os.environ.pop("DATABASE_URL", None)
 
 
 def pytest_sessionstart(session):

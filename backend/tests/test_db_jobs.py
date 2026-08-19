@@ -99,7 +99,7 @@ def test_stage_runs():
         db = JobDB()
         try:
             db.create_job("j1", "url")
-            db.log_stage_start("j1", "ingest", attempt=1)
+            started_at = db.log_stage_start("j1", "ingest", attempt=1)
             rows = db.conn.execute(
                 "SELECT * FROM stage_runs WHERE job_id=? AND stage=?",
                 ("j1", "ingest"),
@@ -109,7 +109,7 @@ def test_stage_runs():
 
             from stages.base import StageResult, StageStatus
             result = StageResult(status=StageStatus.DONE)
-            db.log_stage_end("j1", "ingest", result)
+            db.log_stage_end("j1", "ingest", result, started_at)
             rows = db.conn.execute(
                 "SELECT * FROM stage_runs WHERE job_id=? AND stage=?",
                 ("j1", "ingest"),

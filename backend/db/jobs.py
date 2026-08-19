@@ -184,7 +184,28 @@ class JobDB:
     def claim_job(self, worker_id: str, stale_after: float = 120.0) -> dict | None:
         """Atomic claim FIFO. Job yang di-claim worker lain tapi heartbeat-nya
         basi (>stale_after detik) dianggap crash → bisa di-claim ulang."""
+        from db.pg import pg_enabled
         now = time.time()
+        if pg_enabled():
+            # Postgres: SELECT ... FOR UPDATE SKIP LOCKED = atomic claim
+            # (worker paralel tak saling blok — baris ter-kunci di-skip).
+            row = self.conn.execute(
+                "SELECT id, url, preset FROM jobs "
+                "WHERE status='queued' "
+                "   OR (status='claimed' AND (heartbeat_at IS NULL OR %s - heartbeat_at > %s)) "
+                "ORDER BY created_at ASC, id ASC LIMIT 1 FOR UPDATE SKIP LOCKED",
+                (now, stale_after),
+            ).fetchone()
+            if not row:
+                self.conn.commit()
+                return None
+            self.conn.execute(
+                "UPDATE jobs SET status='claimed', claimed_by=%s, claimed_at=%s, "
+                "heartbeat_at=%s, error_message=NULL, updated_at=CURRENT_TIMESTAMP WHERE id=%s",
+                (worker_id, now, now, row["id"]),
+            )
+            self.conn.commit()
+            return dict(row)
         self.conn.execute("BEGIN IMMEDIATE")
         try:
             row = self.conn.execute(

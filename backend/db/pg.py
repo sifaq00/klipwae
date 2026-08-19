@@ -48,11 +48,12 @@ class _PgConn:
         return self
 
     def __exit__(self, exc_type, exc, tb):
+        # Kompatibel sqlite3.Connection context manager: commit/rollback
+        # SAJA — TIDAK menutup koneksi (JobDB hidup per job/request).
         if exc_type:
             self.rollback()
         else:
             self.commit()
-        self.close()
         return False
 
 

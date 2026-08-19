@@ -30,34 +30,41 @@ cart.
 ## How it works
 
 ```
-YouTube URL
+YouTube URL (paste / Scraper search)
    │
    ▼
 ① Download      yt-dlp (720p default, bestvideo+bestaudio, merged)
-   │
+   │              • title/channel/duration shown INSTANTLY (parallel metadata fetch)
    ▼
 ② Transcribe    faster-whisper (large-v3-turbo default, CUDA/CPU, word-level timestamps)
    │
    ▼
 ③ Analyze       Gemini — detects product-mention segments from the transcript
    │              (health/fitness/beauty focus, confidence-scored, viral hook scoring,
-   │               affiliate caption + hashtags per segment)
+   │               affiliate caption + hashtags per segment; auto model fallback on quota)
    ▼
 ④ Clip          ffmpeg — splits segments into 30–60s chunks aligned to sentence breaks
-   │
+   │              (stores exact clip window so subtitle timing is pixel-accurate)
    ▼
-⑤ Reframe       vertical 9:16 with cinematic camera tracking:
-   │              - layout detection (single / multi-speaker)
-   │              - YOLO11n + ByteTrack person tracking
-   │              - speaker-activity awareness + rapid-turn smoothing
-   │              - adaptive headroom, deadband + EMA smoothing
+⑤ Reframe       vertical 9:16 — snap-fixed-zoom camera mode:
+   │              - camera SNAPS instantly to the speaker on segment change (no glide)
+   │              - no-pan during speech: fixed anchor, zoom-only from box size
+   │              - per-segment anchors (person may shift between segments)
+   │              - YOLO11n + ByteTrack tracking with persistent cache
    ▼
-⑥ Subtitle      karaoke word-by-word burn-in (libass) with viral font pack,
-                  kinetic animations, auto-emoji injection
-   │
+⑥ Subtitle      karaoke word-by-word burn-in (libass):
+   │              - viral OFL font pack (Montserrat Black, Poppins, Anton, ...)
+   │              - pop animation, auto-emoji injected NATURALLY (no outline on emoji)
+   │              - Opus-style presets; live preview ≡ final burn (100% parity)
    ▼
 ✅ Clips ready   review / mark reviewed / reject / copy caption+hashtags / post
 ```
+
+> **Worker-pull architecture:** the heavy pipeline runs on YOUR device (worker.py —
+> uses your GPU), while a lightweight API server handles the job queue, status and
+> live logs. State persists in SQLite (local) or Postgres (Supabase) via
+> `DATABASE_URL`. Clips are uploaded to Cloudflare R2 through presigned URLs —
+> storage credentials never leave the server.
 
 ## Features
 
@@ -69,27 +76,50 @@ YouTube URL
   a brand is kept
 - **Per-segment metadata** — product name, topic, confidence, reason,
   viral-hook score, affiliate caption + hashtags (ready to paste)
+- **Quota resilience** — Gemini model auto-fallback chain (3.7 → 3.6 → 3.5)
+  when free-tier daily quota is exhausted per model
 - **Non-fatal notice** — episodes with zero product segments show a clear notice
-  instead of failing silently
+  instead of failing silently; all-chunks-failed surfaces a clear error instead
+  of a misleading "0 segments"
+
+### YouTube Scraper
+- **Natural-language search** — describe what you want ("podcast indonesia yang
+  bahas produk skincare sponsor") → Gemini expands to 4 queries → merged + deduped
+- **Relevance scoring** — keyword matches: title 2×, description 1×; sorted by score
+- **Podcast filter** — hide short videos (< 15 min) with one toggle
+- **Add to Studio** — multi-select results → create jobs in one click
+- **Smart fallback** — when Gemini is rate-limited, a keyword-split fallback keeps
+  search working (no hard dependency on the API)
 
 ### Video production
-- **Cinematic reframing** — smart crop to 9:16 with face tracking, speaker
-  zones, push-in zoom, deadband + EMA smoothing (no jitter)
-- **Viral subtitles** — karaoke highlight, pop/bounce animations, auto-emoji
-  injection, 6 bundled open-source fonts (OFL), live style preview rendered by
-  the same libass engine used for burn-in
+- **Snap-fixed-zoom reframing** — camera SNAPS instantly to the active speaker on
+  segment change (no glide from the side), then stays fixed (no pan) while the
+  person talks — only zoom follows body size. Per-segment anchors keep the
+  speaker centered even if they shift between segments.
+- **Viral subtitles** — karaoke highlight with pop animation, auto-emoji injected
+  NATURALLY (emoji rendered without subtitle outline/color), bundled OFL font pack
+  (Montserrat Black, Poppins, Anton, Archivo Black, Roboto, Bebas Neue, Lato)
+- **Opus-style presets** — Opus Karaoke, Opus White Box, Opus Pink, Opus Green Pop
+- **Live preview ≡ final burn (100% parity)** — preview and burn share the exact
+  same subtitle filter/engine (pixel-verified), so what you see is what you get
 - **Style presets per job** — re-burn captions non-blocking with live progress
+- **Render ulang kamera** — one-click re-render reframe+caption without re-downloading
 
 ### Operations
 - **Parallel jobs** — up to `MAX_CONCURRENT_JOBS` episodes run simultaneously
   (per-thread stdout routing, GPU memory cleanup, kill-aware pipelines)
-- **Kill / retry / reprocess** — stop mid-flight (kills ffmpeg/whisper
-  properly), retry only repairs missing work; raw video is kept until retention
-  so reprocess skips re-downloading
-- **Live SSE log stream** — real-time pipeline log with auto-reconnect and
-  absolute cursor (no duplicate lines across retries)
-- **Retention cleanup** — stale raw files and tracks purged at startup and on
-  schedule (`STORAGE_RETENTION_DAYS`)
+- **Worker-pull queue** — heavy pipeline runs on your device (`worker.py`):
+  atomic job claim, heartbeat with stale-recovery, batch progress logs,
+  result fencing (only the claiming worker can report), cancel via status poll
+- **Kill / retry / re-render** — stop mid-flight (kills ffmpeg/whisper properly),
+  retry repairs missing work; raw video kept until retention so reprocess skips
+  re-download
+- **Live SSE log stream** — real-time pipeline log with auto-reconnect, absolute
+  cursor (no duplicates), and replay-done marker (progress bar never glitches on
+  refresh)
+- **Storage hygiene** — reframed intermediates auto-deleted after caption
+  (~800MB/job); stale raw/tracks purged by retention; worker cleans local files
+  after upload
 - **Instant metadata** — title, channel and duration appear seconds after
   pasting a URL (yt-dlp metadata fetch runs parallel to the download)
 
@@ -97,18 +127,26 @@ YouTube URL
 
 | Layer | Tech | Notes |
 |-------|------|-------|
-| Backend | Python 3.11+, FastAPI, uvicorn | SSE streaming, async endpoints, thread-per-job runner |
-| DB | SQLite (WAL mode) | `jobs`, `stage_runs`, `segments`, `metrics`; idempotent schema migration on startup |
+| Backend | Python 3.11+, FastAPI, uvicorn | SSE streaming, async endpoints, queue API |
+| DB | SQLite / Postgres (dual-backend) | SQLite local & tests; `DATABASE_URL` (Supabase) in prod; atomic claims (`SKIP LOCKED`) |
+| Storage | Cloudflare R2 | server issues presigned PUT URLs — workers upload without seeing secrets |
 | Transcription | faster-whisper | GPU (CUDA) or CPU, word-level timestamps, model singleton cache |
-| Analysis | Google Gemini | chunked (20 min, 2 min overlap) + parallel calls with per-chunk retry |
-| Reframe | OpenCV, Ultralytics YOLO11n, ByteTrack | chunked tracking (32 frames/batch) to bound RAM |
-| Rendering | ffmpeg (NVENC or libx264 fallback) | kill-aware subprocess management |
+| Analysis | Google Gemini | chunked (20 min, 2 min overlap) + parallel calls, model fallback chain on quota |
+| Reframe | OpenCV, Ultralytics YOLO11n, ByteTrack | chunked tracking (32 frames/batch), persistent cache |
+| Rendering | ffmpeg (NVENC or libx264 fallback) | kill-aware subprocess management, VBR cap 6M |
+| Worker | `worker.py` (device) | claim → local pipeline (your GPU) → presigned upload → report |
 | Frontend | React 18, Vite, Tailwind | 3s polling + SSE log stream (100ms batched), lazy-loaded style editor |
 
-**Concurrency model:** each job runs in its own thread. `sys.stdout` is routed
-per-thread into that job's log buffer (a global `redirect_stdout` would bleed
-logs across concurrent jobs). ffmpeg/whisper subprocesses are registered per
-thread so kill requests terminate the right process.
+**Concurrency model (local runner):** each job runs in its own thread.
+`sys.stdout` is routed per-thread into that job's log buffer (a global
+`redirect_stdout` would bleed logs across concurrent jobs). ffmpeg/whisper
+subprocesses are registered per thread so kill requests terminate the right
+process.
+
+**Worker-pull model (deploy):** the API server is intentionally LIGHT — it
+never downloads/transcribes/renders. `worker.py` on your device polls for jobs,
+runs the full pipeline, streams progress, uploads results to R2 (presigned),
+and reports completion. Multiple workers = horizontal scaling.
 
 ## Requirements
 
@@ -252,7 +290,7 @@ MAX_CONCURRENT_JOBS=2            # set 1 if 2 transcriptions OOM your GPU
 
 ```bash
 cd backend
-.venv\Scripts\python.exe -m pytest tests -q   # 166 passed, 6 skipped (GPU)
+.venv\Scripts\python.exe -m pytest tests -q   # 208 passed, 6 skipped (GPU)
 ```
 
 Optional: pre-download the whisper model once so the first job doesn't wait:
@@ -267,8 +305,8 @@ list with comments).
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `GOOGLE_API_KEY` | — | **Required.** Gemini key for transcript analysis |
-| `ANALYZE_MODEL` / `ANALYZE_MODEL_FALLBACK` | `gemini-flash-latest` / `gemini-3.6-flash` | Gemini model + auto-fallback saat kuota 429 (free-tier 20 req/hari per model) |
+| `GOOGLE_API_KEY` | — | Gemini key for analysis (required on the DEVICE running the pipeline) |
+| `ANALYZE_MODEL` / `ANALYZE_MODEL_FALLBACK` | `gemini-flash-latest` / `gemini-3.6-flash` | Gemini model + auto-fallback on quota 429 (free-tier 20 req/day per model) |
 | `WHISPER_MODEL` | `large-v3-turbo` | Whisper model (local dir `models/` wins if present) |
 | `WHISPER_DEVICE` | `cuda` | `cuda` or `cpu` |
 | `MAX_CONCURRENT_JOBS` | `2` | Parallel jobs; set `1` if 2 transcriptions OOM a 4GB GPU |
@@ -276,9 +314,14 @@ list with comments).
 | `VIDEO_DOWNLOAD_RESOLUTION` | `720` | Max height for the video stream |
 | `STORAGE_RETENTION_DAYS` | `14` | Raw videos / tracks kept before cleanup |
 | `CHUNK_DURATION_MIN` / `CHUNK_OVERLAP_MIN` | `20` / `2` | Transcript chunking for Gemini |
-| `CLIP_ALIGN_SENTENCE` | `true` | Clip cuts aligned to sentence breaks |
-| `REFRAME_*` | see example | Camera tracking: zoom range, head bias, EMA alpha, deadband, hold time |
+| `REFRAME_*` | see example | Camera: zoom range, head bias, snap-fixed-zoom anchors |
 | `REFRAME_TRACK_STEP` / `_IMGSZ` / `_CACHE` | `3` / `320` / `true` | YOLO tracking subsample, input size, cache |
+| `WORKER_QUEUE` | `false` | Job queue mode (server does NOT run pipeline — workers claim jobs) |
+| `WORKER_TOKEN` | `""` | Bearer token for worker endpoints (claim/progress/result) |
+| `DATABASE_URL` | `""` | Postgres (e.g. Supabase) for prod queue; empty = SQLite (local/dev/test) |
+| `R2_ACCOUNT_ID` / `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` | — | Cloudflare R2 credentials (server-side only — workers use presigned URLs) |
+| `R2_PUBLIC_URL` | `""` | Public R2 domain so the UI can load clip URLs |
+| `FRONTEND_ORIGINS` | `http://localhost:5173` | CORS allowlist (comma-separated) |
 | `LOG_LEVEL` | `INFO` | Backend log level |
 
 ## Running
@@ -306,6 +349,23 @@ npm run dev
 
 Open http://localhost:5173
 
+### Worker-pull mode (pipeline on your device)
+
+Run the API server (lightweight) anywhere, then run the worker on the machine
+that has the GPU:
+
+```bash
+# Terminal 1 — API server (env: WORKER_QUEUE=true, WORKER_TOKEN=..., DATABASE_URL=...)
+.venv\Scripts\python.exe -m uvicorn server:app --port 8180
+
+# Terminal 2 — device worker (env: API_URL, WORKER_TOKEN, GOOGLE_API_KEY, WHISPER_DEVICE=cuda)
+.venv\Scripts\python.exe worker.py
+```
+
+The worker claims jobs, runs the full pipeline locally, uploads results to R2
+via presigned URLs, and reports progress — the API server never touches heavy
+compute.
+
 ### Usage flow
 
 1. **Paste a YouTube URL** — title & thumbnail appear instantly
@@ -313,8 +373,9 @@ Open http://localhost:5173
 3. Click **Bikin Klip** — watch the live pipeline log
 4. When done, open the episode → review clips → mark Reviewed/Posted,
    copy affiliate caption + hashtags, or reject (deletes the files)
-5. **Gaya subtitle** — tweak font/style, preview live, re-burn non-blocking
-6. **Hapus episode** — kills running work, deletes DB rows + all files
+5. **Gaya subtitle** — tweak font/style, preview live (≡ final burn), re-burn non-blocking
+6. **Render ulang kamera** — re-run reframe+caption with current camera mode
+7. **Hapus episode** — kills running work, deletes DB rows + all files
 
 ## API Reference
 
@@ -327,13 +388,21 @@ Base URL: `http://localhost:8180`
 | GET | `/api/jobs` | List jobs (`?limit=&offset=`, paginated, max 200) |
 | GET | `/api/jobs/{id}` | Job detail (incl. `running`, stages, notice) |
 | DELETE | `/api/jobs/{id}` | Kill + delete DB rows + all files (non-blocking joins) |
-| POST | `/api/jobs/{id}/kill` | Kill a running job |
+| POST | `/api/jobs/{id}/kill` | Kill a running job (also routes to active re-burn) |
 | POST | `/api/jobs/{id}/retry` | Resume/repair pipeline (skips completed stages) |
-| GET | `/api/jobs/{id}/log` | SSE stream of pipeline logs (cursor-based) |
-| GET | `/api/jobs/{id}/segments` | Product segments |
+| POST | `/api/jobs/{id}/re-render` | Delete reframed+final, re-run reframe & caption |
+| GET | `/api/jobs/{id}/log` | SSE stream of pipeline logs (cursor-based, worker-mode replay) |
+| GET | `/api/jobs/{id}/segments` | Product segments (worker-mode: R2 URLs merged) |
 | POST | `/api/segments/{id}/reviewed` | Toggle reviewed flag |
 | POST | `/api/segments/{id}/posted` | Toggle posted flag |
 | POST | `/api/segments/{id}/reject` | Delete segment + files |
+| GET | `/api/scrape?q=&min_duration=` | YouTube search (Gemini expander + relevance scoring) |
+| POST | `/api/jobs/claim` | Worker: claim next queued job (atomic, stale-recoverable) |
+| POST | `/api/jobs/{id}/heartbeat` | Worker: extend claim (owner-only) |
+| POST | `/api/jobs/{id}/progress` | Worker: batch log lines + status |
+| POST | `/api/jobs/{id}/upload-url` | Worker: presigned PUT URL for R2 |
+| POST | `/api/jobs/{id}/result` | Worker: report done/failed/killed + segments + uploads |
+| GET | `/api/jobs/{id}/uploads` | Upload list with public R2 URLs |
 | GET/PUT | `/api/settings` | App settings |
 | GET | `/api/fonts` | Bundled font list |
 | POST | `/api/caption-style/preview` | Render style preview (async, non-blocking) |
@@ -366,10 +435,17 @@ auto-clipper-app/
 │   │   ├── ffmpeg_helpers.py  # run_ffmpeg, video_encode_args (NVENC/CPU)
 │   │   ├── video_info.py      # ffprobe wrapper
 │   │   ├── caption_style.py   # Style defaults, font map (OFL)
+│   │   ├── r2.py              # R2 presigned PUT + public URLs
 │   │   └── gpu_cleanup.py     # Torch/whisper memory release
+│   ├── worker.py              # Device worker: claim → pipeline → upload → report
+│   ├── db/
+│   │   ├── jobs.py            # JobDB (SQLite) + queue methods (atomic claim)
+│   │   ├── pg.py              # Postgres wrapper (DATABASE_URL) — same API
+│   │   ├── schema.sql         # SQLite schema
+│   │   └── schema.pg.sql      # Postgres schema
 │   ├── prompts/               # Preset prompts (affiliate, podcast, …)
 │   ├── assets/fonts + fonts/  # Bundled OFL fonts
-│   ├── tests/                 # 166 tests (pytest)
+│   ├── tests/                 # 208 tests (pytest) incl. E2E synthetic + queue
 │   └── .env.example
 ├── frontend/
 │   ├── src/
@@ -378,6 +454,8 @@ auto-clipper-app/
 │   │   ├── lib/               # API client, stages, clipboard, caption defaults
 │   │   └── main.tsx           # Entry + ErrorBoundary
 │   └── package.json
+├── Dockerfile                 # Container build (API server — lightweight)
+└── .dockerignore
 ```
 
 ## Testing
@@ -385,26 +463,34 @@ auto-clipper-app/
 ```bash
 cd backend
 .venv\Scripts\python.exe -m pytest tests -q
-# 166 passed, 6 skipped (GPU-dependent tests skip without NVIDIA hardware)
+# 208 passed, 6 skipped (GPU-dependent tests skip without NVIDIA hardware)
 
 cd ../frontend
 npx tsc --noEmit
 ```
 
 Coverage highlights: orchestrator retry/kill semantics, SSE log sequence
-survival across retries, stdout per-thread routing (2 concurrent jobs), caption
-kill-awareness, ingest partial-file recovery, metadata refetch paths, tracker,
-camera path, golden transcript fixtures.
+survival across retries + replay-done marker, stdout per-thread routing
+(2 concurrent jobs), caption kill-awareness + emoji natural rendering +
+preview/burn parity, ingest partial-file recovery, queue claim atomicity
+(claim/heartbeat/stale recovery), worker-pull API flow (claim → progress →
+presigned upload → result), E2E clip→caption chain with synthetic video,
+tracker + camera anchors, golden transcript fixtures.
 
 ## Troubleshooting
 
 | Symptom | Cause / Fix |
 |---------|-------------|
 | Download fails with `403 Forbidden` / JS challenge | Deno missing. Install: `winget install DenoLand.Deno`, then restart the backend |
-| Studio is empty after creating a job | Backend not restarted since a code change — uvicorn `--reload` handles this; check `data/jobs.db` |
+| Studio is empty after creating a job | Backend not restarted since a code change — uvicorn `--reload` handles this; check DB (`data/jobs.db` or `DATABASE_URL`) |
 | Progress bar stuck at 0% | Old frontend cache — hard refresh (Ctrl+Shift+R); bar maps backend status → stage |
+| Progress bar glitches on refresh | Fixed — SSE `replay-done` marker; progress is only parsed from live lines |
 | Transcribe OOM with 2 jobs | Set `MAX_CONCURRENT_JOBS=1` |
-| Reburn appears to hang | It's non-blocking now: watch the toast + per-clip progress; status endpoint `/reburn-status` |
+| Analyze reports "0 segments" but video clearly has products | Check server logs for Gemini 429 quota — all-chunks-failed now shows a clear error, not a fake 0 |
+| Reburn appears to hang | It's non-blocking: watch toast + per-clip progress; status at `/reburn-status` |
+| Reburn result became landscape | Reframed was cleaned up → re-burn auto re-frames first (fixed); re-run via "Render ulang kamera" if needed |
+| Subtitle doesn't match preview | Should be impossible (shared filter engine, pixel-verified) — update backend if you still see drift |
+| Emojis look plain white | libass 0.17 renders emoji monochrome (no COLR) — outline removed on purpose; document as limitation |
 | Clips look green in Chrome | ffmpeg NVENC + rawvideo colorspace bug — handled automatically (forced yuv420p + BT.601 tags) |
 | No subtitles in final clip | Style has `enabled: false`, or the `.ass` was missing (now guarded — re-burn repairs) |
 | Windows: port already in use | `start.bat` refuses and suggests a different port |
